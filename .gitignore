@@ -1,0 +1,53 @@
+# IDE / editor
+.idea/
+.claude/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# Model checkpoints & weights
+**/checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.bin
+
+# Datasets & caches (keep code only)
+**/drugbank/
+**/twosides/
+**/bipartite_cache/
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# Experiment outputs
+**/test_results/
+**/logs/
+**/runs/
+**/outputs/
+**/results/
+*.log
+
+# Common large data formats
+*.csv
+*.tsv
+*.xlsx
+*.zip
+*.tar
+*.gz
+*.7z

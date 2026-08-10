@@ -1,0 +1,33 @@
+# DGN-DDI 依赖（建议先创建 conda 环境再安装）
+# Python 3.8–3.12 最稳妥；3.13 需确认各库已有对应 whl
+#
+# ========== 关键：先装 PyTorch，再装 torch-scatter / torch-sparse ==========
+# 报错 "ModuleNotFoundError: No module named 'torch_scatter'" 时：
+# 1) 不要用裸 pip install torch-scatter，必须从与当前 torch 完全匹配的预编译 whl 安装。
+# 2) 在 **已激活** 的同一环境里执行（PowerShell 示例，按你机器上 python 输出改版本号）：
+#
+#   python -c "import torch; print(torch.__version__); print(torch.version.cuda or 'cpu')"
+#   若输出为 torch 2.6.0，CUDA 为 12.4，则用：
+#   pip install torch-scatter torch-sparse -f "https://data.pyg.org/whl/torch-2.6.0+cu124.html"
+#   若是 CPU 版，把链接末尾改为 +cpu 且选用对应页面上 cpXX 的 whl，例如 torch-2.6.0+cpu.html
+# 3) 再装图网络栈：
+#   pip install torch-geometric
+# 4) 若仍失败：检查网络/代理；或试 conda:
+#   conda install pytorch-scatter pytorch-sparse -c pyg
+#
+# 下面版本号仅作「全项目 pip 时」的约束；torch-scatter 实际由上面 -f 链接安装到匹配版本。
+
+# 核心
+torch>=1.13.0
+torch-geometric>=2.0.0
+# 以下二项需按上文「-f data.pyg.org」单独安装，不可仅凭 PyPI 自动解析到正确二进制
+# torch-scatter
+# torch-sparse
+
+# 化学与数据
+rdkit
+pandas
+numpy
+scikit-learn
+tqdm
+matplotlib
