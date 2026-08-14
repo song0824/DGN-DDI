@@ -104,10 +104,11 @@ class FocalLoss(nn.Module):
     Focal Loss for addressing class imbalance in DDI prediction.
     """
 
-    def __init__(self, alpha=0.5, gamma=2.0):
+    def __init__(self, alpha=0.5, gamma=2.0, balance_by_counts=True):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
+        self.balance_by_counts = balance_by_counts
 
     def forward(self, p_scores, n_scores):
         # 数值稳定性处理
@@ -132,7 +133,12 @@ class FocalLoss(nn.Module):
 
         p_loss_mean = p_loss.mean()
         n_loss_mean = n_loss.mean()
-        total_loss = p_loss_mean + n_loss_mean
+        if self.balance_by_counts:
+            n_pos = max(1, int(p_scores.numel()))
+            n_neg = max(1, int(n_scores.numel()))
+            total_loss = (p_loss_mean * n_pos + n_loss_mean * n_neg) / (n_pos + n_neg)
+        else:
+            total_loss = p_loss_mean + n_loss_mean
 
         if torch.isnan(total_loss) or torch.isinf(total_loss):
             logger.warning("Invalid focal loss detected, fallback to safe constants")

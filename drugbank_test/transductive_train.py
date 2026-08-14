@@ -4,6 +4,9 @@ import time
 import contextlib
 import platform
 import shutil
+import copy
+import json
+import hashlib
 
 # 尽早输出，避免长时间 import 时控制台看似“卡死”
 print("[DGN-DDI] 启动中，正在加载 PyTorch / PyG（首次可能需 1–3 分钟）...", flush=True)
@@ -62,6 +65,41 @@ def _resolve_torch_compile(config: dict) -> None:
         return
     logger.warning("compile_model 已自动关闭: %s", reason)
     config["compile_model"] = False
+
+
+_TRAIN_CONFIG_SIGNATURE_KEYS = (
+    "hidden_dim",
+    "kge_dim",
+    "heads_out_feat_params",
+    "blocks_params",
+    "loss_fn",
+    "focal_alpha",
+    "focal_gamma",
+    "focal_balance_by_counts",
+    "sigmoid_label_smoothing",
+    "hinge_margin",
+    "neg_ent",
+    "hard_neg_mode",
+    "hard_neg_ratio",
+    "hard_neg_max_train_samples",
+    "num_candidates_per_pos",
+    "hard_neg_selection_mode",
+    "hard_neg_pool_strategy",
+    "min_recall_for_threshold",
+)
+
+
+def _stable_json_dumps(obj) -> str:
+    return json.dumps(obj, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+
+
+def _training_signature_payload(config: dict) -> dict:
+    return {k: copy.deepcopy(config.get(k)) for k in _TRAIN_CONFIG_SIGNATURE_KEYS}
+
+
+def get_training_config_signature(config: dict) -> str:
+    payload = _training_signature_payload(config)
+    return hashlib.sha1(_stable_json_dumps(payload).encode("utf-8")).hexdigest()[:12]
 
 
 def _unwrap_collate_batch(batch):
@@ -194,6 +232,7 @@ def get_default_config():
         'save_dir': os.path.join(_script_dir, "checkpoints"),
         'log_dir': os.path.join(_script_dir, "logs"),
         'resume_from_checkpoint': '',
+        'allow_resume_config_mismatch': False,
 
         # 数据处理
         'neg_ent': 3,
@@ -216,6 +255,9 @@ def get_default_config():
         'loss_fn': 'focal',
         'focal_alpha': 0.5,
         'focal_gamma': 2.0,
+        'focal_balance_by_counts': True,
+        'sigmoid_label_smoothing': 0.0,
+        'hinge_margin': 1.0,
         'min_recall_for_threshold': 0.0,
 
         # 硬负
@@ -252,11 +294,14 @@ def get_default_config():
         'record_test_results': True,
         'progress_file': '',
         'test_results_dir': '',
+        'test_every_n_epochs': 1,
         'epochs_per_round': 1,        # 每个 epoch 就是一轮
         'max_rounds': 200,
         'round_patience': 3,          # 连续 3 个 epoch 无明显提升则停止
         'min_round_improve': 1e-4,
         'test_after_each_round': True,
+        'hard_neg_selection_mode': 'per_positive',
+        'hard_neg_pool_strategy': 'random_subset',
     }
 
 
@@ -282,6 +327,7 @@ def apply_training_profile(config: dict, profile: str) -> None:
         # 烟测优先稳定与吞吐：减负样本数并使用更稳健的损失。
         config["neg_ent"] = 1
         config["loss_fn"] = "sigmoid"
+        config["sigmoid_label_smoothing"] = 0.1
         # 烟测仅预热训练子集涉及的药物对，避免启动时长时间无输出
         config["warm_bipartite_max_pairs"] = 5000
         config["warm_bipartite_splits"] = ["train"]
@@ -292,38 +338,45 @@ def apply_training_profile(config: dict, profile: str) -> None:
         config["heads_out_feat_params"] = [128, 128, 128]  # 2*128=256，与 kge_dim 一致
         config["epochs_per_round"] = 1
         config["round_patience"] = 3
+        config["test_every_n_epochs"] = 1
+        config["hard_neg_selection_mode"] = "per_positive"
         _apply_hard_negative_schedule(config, max_train_samples=5000)
     elif p == "full":
         config["subset_size"] = None
         config["epochs"] = 200
-        config["patience"] = 3
+        config["patience"] = 6
         config["csv_max_rows"] = None
-        # focal loss 对难分样本提供更强梯度，alpha=0.75提高正样本权重（正样本较少）
+        # 默认改为更贴近排序任务的 sigmoid 目标；focal/hinge 可通过 CLI 覆盖。
         # neg_ent=3: 与旧版持平，避免二部图磁盘I/O成为速度瓶颈（每批查找对数×67%增量影响大）
         config["neg_ent"] = 3
         config["batch_size"] = 48
         config["compile_model"] = True
-        config["loss_fn"] = "focal"
+        config["loss_fn"] = "sigmoid"
         config["focal_alpha"] = 0.75
         config["focal_gamma"] = 2.0
+        config["sigmoid_label_smoothing"] = 0.0
+        config["hinge_margin"] = 1.0
         config["lr"] = 2e-4
         config["weight_decay"] = 5e-6
-        config["min_recall_for_threshold"] = 0.1
+        config["min_recall_for_threshold"] = 0.0
         config["blocks_params"] = [4, 4, 4]
         config["heads_out_feat_params"] = [64, 64, 64]
         # 全量二部图靠磁盘缓存，避免启动时预热 15 万对
         config["warm_bipartite_cache"] = False
-        # 每 epoch 一轮；连续 3 epoch 无明显提升则停止
+        # 每 epoch 一轮；放宽 patience，减少把缓慢上升误判为平台期。
         config["epochs_per_round"] = 1
-        config["round_patience"] = 3
+        config["round_patience"] = 8
         config["max_rounds"] = 200
         config["test_after_each_round"] = True
+        config["test_every_n_epochs"] = 5
         _apply_hard_negative_schedule(config, max_train_samples=20000)
-        # 从第2个epoch(index=1)开始硬负采样，每epoch更新，比例提高到0.9
+        # 从第2个 epoch 开始使用更广覆盖的硬负样本，降低硬负比例避免过拟合噪声候选。
         config["hard_neg_start_epoch"] = 1
         config["hard_neg_frequency"] = 1
-        config["num_candidates_per_pos"] = 8
-        config["hard_neg_ratio"] = 0.9
+        config["num_candidates_per_pos"] = 16
+        config["hard_neg_ratio"] = 0.5
+        config["hard_neg_selection_mode"] = "per_positive"
+        config["hard_neg_pool_strategy"] = "random_subset"
     else:
         raise ValueError(f"Unknown profile {profile!r}, expected 'smoke' or 'full'")
 
@@ -380,6 +433,7 @@ class HardNegativeSampler:
         self.ddi_loader = ddi_loader
         self.neg_ent = neg_ent
         self.device = device
+        self.selection_mode = "per_positive"
 
         # 获取所有可能的药物ID列表，用于生成候选负样本
         self.drug_ids = list(ddi_loader.int_to_drug_id.values())
@@ -399,10 +453,20 @@ class HardNegativeSampler:
                 # 随机选择一个头或尾部进行替换
                 if random.random() < 0.5:
                     neg_h = random.choice(self.drug_ids)
+                    if neg_h == h and len(self.drug_ids) > 1:
+                        for _retry in range(4):
+                            neg_h = random.choice(self.drug_ids)
+                            if neg_h != h:
+                                break
                     neg_t = t
                 else:
                     neg_h = h
                     neg_t = random.choice(self.drug_ids)
+                    if neg_t == t and len(self.drug_ids) > 1:
+                        for _retry in range(4):
+                            neg_t = random.choice(self.drug_ids)
+                            if neg_t != t:
+                                break
                 candidate_negatives.append((neg_h, neg_t, r))
         return candidate_negatives
 
@@ -484,8 +548,27 @@ class HardNegativeSampler:
             return []
 
         all_scores = torch.cat(candidate_scores)
+        if all_scores.numel() == 0:
+            return []
 
-        # 3. 选择分数最高的样本作为硬负样本（代码不变）
+        selection_mode = str(self.selection_mode).lower().strip()
+        if selection_mode == "per_positive":
+            hard_negatives = []
+            span = max(1, int(num_candidates_per_pos))
+            per_pos_topk = max(1, int(self.neg_ent))
+            for idx, _ in enumerate(pos_triples):
+                start = idx * span
+                end = min(start + span, len(candidate_neg_triples))
+                if start >= end:
+                    continue
+                local_scores = all_scores[start:end]
+                k = min(per_pos_topk, local_scores.numel())
+                top_local = torch.topk(local_scores, k=k, largest=True).indices.tolist()
+                for local_idx in top_local:
+                    hard_negatives.append(candidate_neg_triples[start + int(local_idx)])
+            return hard_negatives
+
+        # 兼容旧逻辑：对整批候选做全局 top-k。
         num_hard_negatives = min(len(pos_triples) * self.neg_ent, len(all_scores))
         if num_hard_negatives > 0:
             top_k_indices = torch.topk(all_scores, k=num_hard_negatives, largest=True).indices
@@ -570,8 +653,10 @@ class HardNegativeAwareDataset(DrugDataset):
 class DDITrainer:
     def __init__(self, config):
         self.config = config
+        self.config_signature = get_training_config_signature(config)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Using device: {self.device}")
+        logger.info("Training config signature: %s", self.config_signature)
 
         # 1. 初始化数据加载器 (所有数据的基础)
         self.ddi_loader = DDIDataLoader()
@@ -644,6 +729,9 @@ class DDITrainer:
                 neg_ent=self.config['neg_ent'],
                 device=self.device
             )
+            self.hard_neg_sampler.selection_mode = str(
+                self.config.get("hard_neg_selection_mode", "per_positive")
+            )
             logger.info("Hard negative sampler initialized (mode=%s)", hnm)
         else:
             self.hard_neg_sampler = None
@@ -668,14 +756,17 @@ class DDITrainer:
     def _get_loss_function(self, loss_name):
         """根据配置返回损失函数实例"""
         if loss_name == 'sigmoid':
-            return SigmoidLoss(label_smoothing=0.1)
+            return SigmoidLoss(
+                label_smoothing=float(self.config.get("sigmoid_label_smoothing", 0.0))
+            )
         elif loss_name == 'focal':
             return FocalLoss(
                 alpha=float(self.config.get("focal_alpha", 0.5)),
                 gamma=float(self.config.get("focal_gamma", 2.0)),
+                balance_by_counts=bool(self.config.get("focal_balance_by_counts", True)),
             )
         elif loss_name == 'hinge':
-            return PairwiseHingeLoss(margin=2.0)
+            return PairwiseHingeLoss(margin=float(self.config.get("hinge_margin", 1.0)))
         elif loss_name == 'adaptive':
             return AdaptiveLoss()
         else:
@@ -760,7 +851,10 @@ class DDITrainer:
                 )
 
     def _hard_neg_cache_path(self, epoch: int) -> str:
-        return os.path.join(self.config["save_dir"], f"hard_neg_cache_e{epoch}.pt")
+        return os.path.join(
+            self.config["save_dir"],
+            f"hard_neg_cache_{self.config_signature}_e{epoch}.pt",
+        )
 
     def _save_hard_neg_cache(self, epoch: int, hard_negatives_dict: dict) -> None:
         path = self._hard_neg_cache_path(epoch)
@@ -792,6 +886,13 @@ class DDITrainer:
         g = torch.Generator()
         g.manual_seed(int(self.config.get("random_seed", 42)) + int(epoch) * 10007)
         return torch.randperm(n, generator=g).tolist()
+
+    def _sample_epoch_subset(self, triples, cap: int, epoch: int):
+        """对硬负候选池做可复现随机抽样，避免始终只看前 N 条三元组。"""
+        if cap <= 0 or len(triples) <= cap:
+            return list(triples)
+        rng = random.Random(int(self.config.get("random_seed", 42)) + int(epoch) * 9973)
+        return rng.sample(list(triples), k=cap)
 
     def _make_resume_train_loader(self, epoch: int, start_batch: int = 0):
         """
@@ -843,7 +944,11 @@ class DDITrainer:
         cap = int(self.config.get("hard_neg_max_train_samples", 10_000))
         if cap > 0 and len(pos_triples) > cap:
             logger.info(f"Limiting hard-neg pool from {len(pos_triples)} to {cap} triples")
-            pos_triples = pos_triples[:cap]
+            pool_strategy = str(self.config.get("hard_neg_pool_strategy", "random_subset")).lower().strip()
+            if pool_strategy == "front_slice":
+                pos_triples = pos_triples[:cap]
+            else:
+                pos_triples = self._sample_epoch_subset(pos_triples, cap, epoch)
         # 批量生成硬负样本
         batch_size = 100  # 控制批次大小以避免内存问题
         hard_negatives_dict = {}
@@ -1341,12 +1446,18 @@ class DDITrainer:
         last_epoch_path = os.path.join(self.config['save_dir'], 'last_epoch.pth')
         ckpt_used = None
         if os.path.exists(best_model_path):
-            self.load_checkpoint(best_model_path)
-            ckpt_used = best_model_path
+            try:
+                self.load_checkpoint(best_model_path)
+                ckpt_used = best_model_path
+            except RuntimeError as e:
+                logger.warning("Skip loading best_model for test due to signature mismatch: %s", e)
         elif os.path.exists(last_epoch_path):
-            self.load_checkpoint(last_epoch_path)
-            ckpt_used = last_epoch_path
-            logger.info("No best_model.pth yet; testing with last_epoch.pth")
+            try:
+                self.load_checkpoint(last_epoch_path)
+                ckpt_used = last_epoch_path
+                logger.info("No best_model.pth yet; testing with last_epoch.pth")
+            except RuntimeError as e:
+                logger.warning("Skip loading last_epoch for test due to signature mismatch: %s", e)
         else:
             logger.warning("No checkpoint found for testing; using in-memory model weights.")
 
@@ -1422,6 +1533,7 @@ class DDITrainer:
             "recorded_at": stamp,
             "session_status": session_status,
             "completed_epoch": int(completed_epoch),
+            "train_config_signature": self.config_signature,
             "best_val_auc": float(self.best_val_auc),
             "best_val_aupr": float(self.best_val_aupr),
             "best_val_f1": float(self.best_val_f1),
@@ -1501,6 +1613,8 @@ class DDITrainer:
             'training_converged': self.training_converged,
             'epoch_in_round': self.epoch_in_round,
             'global_epoch': self.global_epoch,
+            'train_config': copy.deepcopy(self.config),
+            'train_config_signature': self.config_signature,
         }
         if self.scaler is not None:
             ckpt['scaler_state_dict'] = self.scaler.state_dict()
@@ -1540,12 +1654,37 @@ class DDITrainer:
                 path, epoch, epoch + 1,
             )
 
+    def _checkpoint_signature(self, checkpoint: dict) -> str:
+        sig = checkpoint.get("train_config_signature")
+        if sig:
+            return str(sig)
+        train_cfg = checkpoint.get("train_config")
+        if isinstance(train_cfg, dict):
+            return get_training_config_signature(train_cfg)
+        return ""
+
     def load_checkpoint(self, path):
         """加载模型检查点；返回下一个待训练 epoch（mid-epoch 则返回同一 epoch）。"""
         if not os.path.exists(path):
             logger.warning(f"Checkpoint {path} not found, starting from scratch")
             return 0
         checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt_sig = self._checkpoint_signature(checkpoint)
+        if ckpt_sig != self.config_signature:
+            if self.config.get("allow_resume_config_mismatch", False):
+                logger.warning(
+                    "Resuming with config mismatch because allow_resume_config_mismatch=True: "
+                    "checkpoint=%s current=%s",
+                    ckpt_sig or "(missing)",
+                    self.config_signature,
+                )
+            else:
+                raise RuntimeError(
+                    "Checkpoint config signature mismatch: "
+                    f"checkpoint={ckpt_sig or '(missing)'} current={self.config_signature}. "
+                    "Use --fresh to restart, or pass --allow-resume-config-mismatch only if "
+                    "you intentionally accept mixed training semantics."
+                )
         try:
             self.model.load_state_dict(checkpoint['model_state_dict'])
         except RuntimeError as e:
@@ -1630,6 +1769,7 @@ class DDITrainer:
         payload = {
             "status": status,
             "updated_at": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "train_config_signature": self.config_signature,
             "completed_epoch": int(epoch),
             "next_epoch": int(epoch) + 1,
             "best_val_auc": float(self.best_val_auc),
@@ -1708,9 +1848,13 @@ class DDITrainer:
         f1_eps, auc_eps, aupr_eps = 1e-4, 1e-4, 1e-4
         improved = False
         if val_ok and (
-                val_metrics['f1_score'] > self.best_val_f1 + f1_eps or
                 val_metrics['auc'] > self.best_val_auc + auc_eps or
-                val_metrics['aupr'] > self.best_val_aupr + aupr_eps
+                val_metrics['aupr'] > self.best_val_aupr + aupr_eps or
+                (
+                    abs(val_metrics['auc'] - self.best_val_auc) <= auc_eps and
+                    abs(val_metrics['aupr'] - self.best_val_aupr) <= aupr_eps and
+                    val_metrics['f1_score'] > self.best_val_f1 + f1_eps
+                )
         ):
             improved = True
             self.best_val_f1 = val_metrics['f1_score']
@@ -1875,10 +2019,21 @@ class DDITrainer:
                 last_completed_epoch,
             )
             test_results = None
-            if self.config.get("test_after_each_round", True):
+            test_every_n_epochs = max(1, int(self.config.get("test_every_n_epochs", 1)))
+            should_test_this_round = (
+                self.config.get("test_after_each_round", True)
+                and ((last_completed_epoch + 1) % test_every_n_epochs == 0)
+            )
+            if should_test_this_round:
                 test_results = self._run_and_record_test(
                     f"round_{self.current_round}_done",
                     last_completed_epoch,
+                )
+            elif self.config.get("test_after_each_round", True):
+                logger.info(
+                    "Skip auto test at epoch %d because test_every_n_epochs=%d",
+                    last_completed_epoch,
+                    test_every_n_epochs,
                 )
 
             # 用本轮后的 best_val 判定是否“明显提升”
@@ -2007,6 +2162,18 @@ def main():
         default=0,
         help="连续多少轮无明显提升则停止（默认配置 2；0=用配置默认）",
     )
+    parser.add_argument("--loss-fn", choices=["sigmoid", "focal", "hinge", "adaptive"], default="", help="覆盖训练损失")
+    parser.add_argument("--focal-alpha", type=float, default=None, help="覆盖 focal alpha")
+    parser.add_argument("--focal-gamma", type=float, default=None, help="覆盖 focal gamma")
+    parser.add_argument("--hinge-margin", type=float, default=None, help="覆盖 hinge margin")
+    parser.add_argument("--sigmoid-label-smoothing", type=float, default=None, help="覆盖 sigmoid 标签平滑")
+    parser.add_argument("--hard-neg-ratio", type=float, default=None, help="覆盖硬负样本比例")
+    parser.add_argument("--num-candidates-per-pos", type=int, default=0, help="覆盖每个正样本的硬负候选数")
+    parser.add_argument("--hard-neg-selection-mode", choices=["per_positive", "global"], default="", help="硬负选择模式")
+    parser.add_argument("--hard-neg-pool-strategy", choices=["random_subset", "front_slice"], default="", help="硬负池采样方式")
+    parser.add_argument("--hard-neg-max-train-samples", type=int, default=0, help="覆盖硬负池最大样本数")
+    parser.add_argument("--test-every-n-epochs", type=int, default=0, help="每隔多少个 epoch 自动测试一次")
+    parser.add_argument("--allow-resume-config-mismatch", action="store_true", help="允许在训练配置签名不一致时强行续训")
     args = parser.parse_args()
 
     config = get_default_config()
@@ -2022,19 +2189,46 @@ def main():
         config["record_test_results"] = True
         config["test_after_each_round"] = True
         config["epochs_per_round"] = 1
-        config["round_patience"] = 3
-        config["patience"] = 3
+        config["round_patience"] = max(int(config.get("round_patience", 8)), 8)
+        config["patience"] = max(int(config.get("patience", 6)), 6)
+        config["test_every_n_epochs"] = max(int(config.get("test_every_n_epochs", 5)), 5)
         if not args.skip_final_test:
             config["skip_final_test"] = False
         logger.info(
-            "Nightly mode ON: resume + stop_at=%s | each epoch=test | stop if no improve for 3 epochs",
+            "Nightly mode ON: resume + stop_at=%s | test_every_n_epochs=%s | round_patience=%s",
             args.stop_at,
+            config["test_every_n_epochs"],
+            config["round_patience"],
         )
 
     if args.epochs_per_round and args.epochs_per_round > 0:
         config["epochs_per_round"] = int(args.epochs_per_round)
     if args.round_patience and args.round_patience > 0:
         config["round_patience"] = int(args.round_patience)
+    if args.loss_fn:
+        config["loss_fn"] = args.loss_fn
+    if args.focal_alpha is not None:
+        config["focal_alpha"] = float(args.focal_alpha)
+    if args.focal_gamma is not None:
+        config["focal_gamma"] = float(args.focal_gamma)
+    if args.hinge_margin is not None:
+        config["hinge_margin"] = float(args.hinge_margin)
+    if args.sigmoid_label_smoothing is not None:
+        config["sigmoid_label_smoothing"] = float(args.sigmoid_label_smoothing)
+    if args.hard_neg_ratio is not None:
+        config["hard_neg_ratio"] = float(args.hard_neg_ratio)
+    if args.num_candidates_per_pos and args.num_candidates_per_pos > 0:
+        config["num_candidates_per_pos"] = int(args.num_candidates_per_pos)
+    if args.hard_neg_selection_mode:
+        config["hard_neg_selection_mode"] = args.hard_neg_selection_mode
+    if args.hard_neg_pool_strategy:
+        config["hard_neg_pool_strategy"] = args.hard_neg_pool_strategy
+    if args.hard_neg_max_train_samples and args.hard_neg_max_train_samples > 0:
+        config["hard_neg_max_train_samples"] = int(args.hard_neg_max_train_samples)
+    if args.test_every_n_epochs and args.test_every_n_epochs > 0:
+        config["test_every_n_epochs"] = int(args.test_every_n_epochs)
+    if args.allow_resume_config_mismatch:
+        config["allow_resume_config_mismatch"] = True
 
     if args.stop_at:
         _parse_hhmm(args.stop_at)

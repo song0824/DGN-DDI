@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
-def get_test_config():
-    """获取测试配置并验证必要参数"""
+def get_test_config(profile: str = "full"):
+    """获取测试配置并验证必要参数。默认对齐 full 训练配置做全量评估。"""
     _script_dir = os.path.dirname(os.path.abspath(__file__))
     _drugbank_dir = os.path.join(_script_dir, "drugbank")
     config = {
@@ -38,8 +38,7 @@ def get_test_config():
 
         # 数据处理
         'neg_ent': 3,
-        # 烟测 A：正整数=随机子集；全量评估请改为 None
-        'subset_size': 2000,
+        'subset_size': None,
 
         # 模型超参数（需要与训练时保持一致）
         'hidden_dim': 256,
@@ -48,10 +47,13 @@ def get_test_config():
         'blocks_params': [4, 4, 4],
 
         # 测试超参数
-        'batch_size': 64,
-        'loss_fn': 'focal',
-        'focal_alpha': 0.5,
+        'batch_size': 48,
+        'loss_fn': 'sigmoid',
+        'focal_alpha': 0.75,
         'focal_gamma': 2.0,
+        'focal_balance_by_counts': True,
+        'sigmoid_label_smoothing': 0.0,
+        'hinge_margin': 1.0,
         'min_recall_for_threshold': 0.0,
         'use_amp': True,
 
@@ -67,6 +69,13 @@ def get_test_config():
         'random_seed': 42
     }
 
+    if str(profile).lower().strip() == "smoke":
+        config['subset_size'] = 2000
+        config['batch_size'] = 32
+        config['loss_fn'] = 'sigmoid'
+        config['heads_out_feat_params'] = [128, 128, 128]
+        config['blocks_params'] = [2, 2, 2]
+
     # 验证必要配置项
     required_keys = ['test_csv', 'model_path', 'results_dir', 'hidden_dim', 'kge_dim']
     for key in required_keys:
@@ -76,11 +85,38 @@ def get_test_config():
     return config
 
 
+def _merge_eval_config_from_checkpoint(config: dict, checkpoint: dict) -> dict:
+    """用 checkpoint 中的训练配置覆盖关键评估超参，保证训练/测试口径一致。"""
+    train_cfg = checkpoint.get("train_config")
+    if not isinstance(train_cfg, dict):
+        return config
+
+    synced_keys = [
+        "hidden_dim",
+        "kge_dim",
+        "heads_out_feat_params",
+        "blocks_params",
+        "neg_ent",
+        "loss_fn",
+        "focal_alpha",
+        "focal_gamma",
+        "focal_balance_by_counts",
+        "sigmoid_label_smoothing",
+        "hinge_margin",
+        "min_recall_for_threshold",
+    ]
+    for key in synced_keys:
+        if key in train_cfg:
+            config[key] = train_cfg[key]
+    return config
+
+
 class DDITester:
     def __init__(self, config):
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Using device: {self.device}")
+        self.checkpoint = self._load_checkpoint_metadata()
 
         # 1. 初始化数据加载器
         self.ddi_loader = DDIDataLoader()
@@ -120,18 +156,29 @@ class DDITester:
     def _get_loss_function(self, loss_name):
         """根据配置返回损失函数实例"""
         if loss_name == 'sigmoid':
-            return SigmoidLoss(label_smoothing=0.1)
+            return SigmoidLoss(
+                label_smoothing=float(self.config.get("sigmoid_label_smoothing", 0.0))
+            )
         elif loss_name == 'focal':
             return FocalLoss(
                 alpha=float(self.config.get("focal_alpha", 0.5)),
                 gamma=float(self.config.get("focal_gamma", 2.0)),
+                balance_by_counts=bool(self.config.get("focal_balance_by_counts", True)),
             )
         elif loss_name == 'hinge':
-            return PairwiseHingeLoss(margin=2.0)
+            return PairwiseHingeLoss(margin=float(self.config.get("hinge_margin", 1.0)))
         elif loss_name == 'adaptive':
             return AdaptiveLoss()
         else:
             raise ValueError(f"Unknown loss function: {loss_name}")
+
+    def _load_checkpoint_metadata(self):
+        model_path = self.config['model_path']
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model checkpoint {model_path} not found")
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+        self.config = _merge_eval_config_from_checkpoint(self.config, checkpoint)
+        return checkpoint
 
     def load_test_data(self):
         """加载测试数据集，优化数据加载效率"""
@@ -177,12 +224,8 @@ class DDITester:
     def load_model(self):
         """加载训练好的模型，解决PyTorch 2.6+兼容性问题"""
         model_path = self.config['model_path']
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model checkpoint {model_path} not found")
-
         logger.info(f"Loading model from {model_path}")
-        # 添加weights_only=False参数以兼容旧模型
-        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+        checkpoint = self.checkpoint
 
         # 加载模型状态
         self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -563,16 +606,18 @@ def main():
     """主函数入口，支持命令行参数"""
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='Test DDI prediction model')
+    parser.add_argument('--profile', choices=['full', 'smoke'], default='full', help='Use full or smoke-style eval defaults')
     parser.add_argument('--config', type=str, help='Path to custom config file (JSON)')
     parser.add_argument('--model-path', type=str, help='Override model path')
     parser.add_argument('--test-csv', type=str, help='Override test CSV path')
     parser.add_argument('--batch-size', type=int, help='Override batch size')
+    parser.add_argument('--subset-size', type=int, help='Use a random subset of test data')
     parser.add_argument('--threshold', type=float, help='Override prediction threshold')
 
     args = parser.parse_args()
 
     # 加载配置
-    config = get_test_config()
+    config = get_test_config(profile=args.profile)
 
     # 从JSON文件加载自定义配置
     if args.config and os.path.exists(args.config):
@@ -588,6 +633,8 @@ def main():
         config['test_csv'] = args.test_csv
     if args.batch_size:
         config['batch_size'] = args.batch_size
+    if args.subset_size is not None:
+        config['subset_size'] = args.subset_size
     if args.threshold is not None:
         config['threshold'] = args.threshold
         config["_threshold_overridden"] = True

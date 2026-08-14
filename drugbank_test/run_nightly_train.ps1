@@ -1,5 +1,5 @@
 # DGN-DDI nightly trainer launcher (ASCII-only for Windows PowerShell 5.x compatibility)
-# Flow: each epoch train -> auto test/record -> continue until 3 epochs no improve
+# Flow: train nightly with periodic auto test/record -> continue until patience is exhausted
 # Window: start 20:30, pause at 08:00; mid-epoch checkpoint resume next night.
 #
 # Usage:
@@ -80,7 +80,7 @@ $Header = @(
     ("Profile: {0}" -f $Profile),
     ("StopAt: {0}" -f $StopAt),
     ("Fresh: {0}" -f [bool]$Fresh),
-    "Loop: each epoch -> auto test/record -> stop after 3 no-improve epochs",
+    "Loop: periodic auto test/record (default every 5 epochs) with extended patience",
     ("Command: {0} {1}" -f $PythonExe, ($ArgsList -join " ")),
     "==========================================="
 ) -join "`r`n"

@@ -2,6 +2,8 @@ import os
 import random
 import re
 import sys
+import json
+import hashlib
 import numpy as np
 import pandas as pd
 import torch
@@ -18,6 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 # 基于当前脚本所在目录（drugbank_test）的相对路径，便于任意机器运行
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _DRUGBANK_DIR = os.path.join(_SCRIPT_DIR, "drugbank")
+_BIPARTITE_CACHE_ROOT_DIR = os.path.join(_DRUGBANK_DIR, "bipartite_cache")
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -27,20 +30,66 @@ def _env_bool(name: str, default: bool) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def _default_use_bipartite_disk_cache() -> bool:
     """若未显式设置环境变量，且磁盘缓存目录已有 .pt 文件，则默认开启读盘。"""
     if os.getenv("DDI_USE_BIPARTITE_DISK_CACHE") is not None:
         return _env_bool("DDI_USE_BIPARTITE_DISK_CACHE", False)
-    cache_dir = os.path.join(_DRUGBANK_DIR, "bipartite_cache")
+    cache_dir = _BIPARTITE_CACHE_ROOT_DIR
     if not os.path.isdir(cache_dir):
         return False
     try:
-        for name in os.listdir(cache_dir):
-            if name.endswith(".pt"):
-                return True
+        for root, _, files in os.walk(cache_dir):
+            for name in files:
+                if name.endswith(".pt"):
+                    return True
     except OSError:
         pass
     return False
+
+
+def _stable_json_dumps(obj) -> str:
+    return json.dumps(obj, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+
+
+def get_bipartite_cache_signature(config: dict = None) -> str:
+    cfg = config or {
+        "SIMILARITY_THRESHOLD": _env_float("DDI_SIMILARITY_THRESHOLD", 0.3),
+        "GRANULARITY_WEIGHTS": {"atom": 0.6, "substruct": 0.4},
+        "MAX_B_GRAPH_H": _env_int("DDI_MAX_B_GRAPH_H", 128),
+        "MAX_B_GRAPH_W": _env_int("DDI_MAX_B_GRAPH_W", 128),
+    }
+    payload = {
+        "similarity_threshold": float(cfg["SIMILARITY_THRESHOLD"]),
+        "granularity_weights": cfg["GRANULARITY_WEIGHTS"],
+        "max_b_graph_h": int(cfg["MAX_B_GRAPH_H"]),
+        "max_b_graph_w": int(cfg["MAX_B_GRAPH_W"]),
+    }
+    return hashlib.sha1(_stable_json_dumps(payload).encode("utf-8")).hexdigest()[:12]
+
+
+def get_bipartite_cache_dir(config: dict = None) -> str:
+    sig = get_bipartite_cache_signature(config)
+    return os.path.join(_BIPARTITE_CACHE_ROOT_DIR, f"v_{sig}")
 
 
 CONFIG = {
@@ -48,11 +97,11 @@ CONFIG = {
     "DRUG_SMILES_PATH": os.path.join(_DRUGBANK_DIR, "drug_smiles.csv"),
     "DDI_CSV_PATH": os.path.join(_DRUGBANK_DIR, "ddis.csv"),
     "BATCH_SIZE": 32,
-    "SIMILARITY_THRESHOLD": 0.5,
+    "SIMILARITY_THRESHOLD": _env_float("DDI_SIMILARITY_THRESHOLD", 0.3),
     "GRANULARITY_WEIGHTS": {"atom": 0.6, "substruct": 0.4},
-    "MAX_B_GRAPH_H": 100,
-    "MAX_B_GRAPH_W": 100,
-    "BIPARTITE_CACHE_DIR": os.path.join(_DRUGBANK_DIR, "bipartite_cache"),
+    "MAX_B_GRAPH_H": _env_int("DDI_MAX_B_GRAPH_H", 128),
+    "MAX_B_GRAPH_W": _env_int("DDI_MAX_B_GRAPH_W", 128),
+    "BIPARTITE_CACHE_DIR": get_bipartite_cache_dir(),
     # 若 bipartite_cache/ 下已有 .pt，默认读盘；否则仅内存 LRU。
     # 强制开关：DDI_USE_BIPARTITE_DISK_CACHE=0|1
     "USE_BIPARTITE_DISK_CACHE": _default_use_bipartite_disk_cache(),
@@ -107,11 +156,12 @@ def _filename_safe_drug_id(did) -> str:
 class BipartiteGraphCache:
     """无向对 (d_min,d_max) 的二部图张量；内存 LRU + 可选落盘 .pt 文件。"""
 
-    def __init__(self, cache_dir, use_disk, write_disk, mem_max):
+    def __init__(self, cache_dir, use_disk, write_disk, mem_max, cache_signature: str = ""):
         self.cache_dir = cache_dir
         self.use_disk = use_disk
         self.write_disk = write_disk and use_disk
         self.mem_max = mem_max
+        self.cache_signature = cache_signature or get_bipartite_cache_signature()
         self._mem: OrderedDict = OrderedDict()
         if use_disk and cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
@@ -130,8 +180,17 @@ class BipartiteGraphCache:
             p = self._path(a, b)
             if os.path.isfile(p):
                 data = torch.load(p, map_location="cpu", weights_only=False)
-                self._set_mem(key, data)
-                return data
+                payload = data
+                if isinstance(data, dict) and "payload" in data and "cache_signature" in data:
+                    if str(data["cache_signature"]) != str(self.cache_signature):
+                        logger.warning(
+                            "Ignoring stale bipartite cache %s: file signature=%s current=%s",
+                            p, data.get("cache_signature"), self.cache_signature,
+                        )
+                        return None
+                    payload = data["payload"]
+                self._set_mem(key, payload)
+                return payload
         return None
 
     def set(self, a, b, b_graph_dict) -> None:
@@ -141,7 +200,13 @@ class BipartiteGraphCache:
         if self.write_disk and self.cache_dir and b_graph_dict is not None:
             p = self._path(a, b)
             try:
-                torch.save(b_graph_dict, p)
+                torch.save(
+                    {
+                        "cache_signature": self.cache_signature,
+                        "payload": b_graph_dict,
+                    },
+                    p,
+                )
             except OSError as e:
                 logger.warning(f"Failed to write bipartite cache {p}: {e}")
 
@@ -252,14 +317,18 @@ class DDIDataLoader:
         self.drug_id_to_int, self.int_to_drug_id = self._extract_id_mappings()
         self.drug_smiles = self._load_drug_smiles()
         self._init_global_relation_vocab()
+        bipartite_sig = get_bipartite_cache_signature(CONFIG)
         self.bipartite_cache = BipartiteGraphCache(
             CONFIG.get("BIPARTITE_CACHE_DIR", os.path.join(_DRUGBANK_DIR, "bipartite_cache")),
             CONFIG.get("USE_BIPARTITE_DISK_CACHE", True),
             CONFIG.get("WRITE_BIPARTITE_DISK_CACHE", False),
             int(CONFIG.get("BIPARTITE_MEM_CACHE_MAX", 8192)),
+            cache_signature=bipartite_sig,
         )
         logger.info(
-            "Bipartite cache config: use_disk=%s, write_disk=%s, mem_max=%s",
+            "Bipartite cache config: signature=%s, dir=%s, use_disk=%s, write_disk=%s, mem_max=%s",
+            bipartite_sig,
+            CONFIG.get("BIPARTITE_CACHE_DIR", ""),
             bool(CONFIG.get("USE_BIPARTITE_DISK_CACHE", False)),
             bool(CONFIG.get("WRITE_BIPARTITE_DISK_CACHE", False)),
             int(CONFIG.get("BIPARTITE_MEM_CACHE_MAX", 8192)),

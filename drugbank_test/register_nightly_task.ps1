@@ -63,7 +63,7 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Settings $Settings `
     -Principal $Principal `
-    -Description "DGN-DDI nightly train 20:30-08:00 with mid-epoch resume and per-epoch test" |
+    -Description "DGN-DDI nightly train 20:30-08:00 with mid-epoch resume and periodic test" |
     Out-Null
 
 Write-Host ("Registered scheduled task: {0}" -f $TaskName)

@@ -28,6 +28,7 @@ from data_preprocessing import (  # noqa: E402
     DDIDataLoader,
     DrugDataset,
     _canonical_drug_pair_key,
+    get_bipartite_cache_signature,
 )
 
 
@@ -72,7 +73,11 @@ def main():
     ds.tri_list = []  # unused for _get_drug_data
 
     pairs = _collect_pairs_from_csvs(csvs)
-    print(f"Unique undirected pairs: {len(pairs)}; cache dir={getattr(ddi.bipartite_cache, 'cache_dir', '')}")
+    print(
+        f"Unique undirected pairs: {len(pairs)}; "
+        f"cache signature={get_bipartite_cache_signature()}; "
+        f"cache dir={getattr(ddi.bipartite_cache, 'cache_dir', '')}"
+    )
 
     n_ok, n_skip = 0, 0
     for h, t in tqdm(sorted(pairs), desc="bipartite_cache"):
