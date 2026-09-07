@@ -33,7 +33,9 @@ def get_test_config(profile: str = "full"):
     config = {
         # 数据与路径（相对当前脚本目录）
         'test_csv': os.path.join(_drugbank_dir, "fold0", "test.csv"),
-        'model_path': os.path.join(_script_dir, "checkpoints", "best_model.pth"),
+        'model_path': os.path.join(_script_dir, "checkpoints", "paper_lock", "best_model.pth")
+        if os.path.exists(os.path.join(_script_dir, "checkpoints", "paper_lock", "best_model.pth"))
+        else os.path.join(_script_dir, "checkpoints", "best_model.pth"),
         'results_dir': os.path.join(_script_dir, "test_results"),
 
         # 数据处理
@@ -149,6 +151,8 @@ class DDITester:
         self.ground_truths = []
         self.scores = []
         self.probabilities = []
+        self.relation_ids = []
+        self.per_relation_results = []
 
         # 记录整体推理时间
         self.total_inference_time = 0
@@ -244,6 +248,9 @@ class DDITester:
             logger.info("Using threshold from checkpoint: %.4f", self.config["threshold"])
 
         logger.info("Model loaded successfully!")
+        ablation = str(self.config.get("ablation_mode") or "full")
+        if ablation and ablation != "full":
+            self.model.set_ablation_mode(ablation)
 
     def test(self):
         """主测试函数，优化推理效率"""
@@ -252,7 +259,7 @@ class DDITester:
 
         self.model.eval()
         total_loss = 0
-        all_scores, all_labels = [], []
+        all_scores, all_labels, all_rels = [], [], []
         batch_times = []
 
         # 自动调整进度条显示
@@ -314,10 +321,13 @@ class DDITester:
 
                     all_scores.append(p_scores.cpu())
                     all_labels.append(torch.ones_like(p_scores.cpu()))
+                    all_rels.append(pos_r.detach().cpu())
 
                     if n_scores.numel() > 0:
                         all_scores.append(n_scores.cpu())
                         all_labels.append(torch.zeros_like(n_scores.cpu()))
+                        if neg_r is not None:
+                            all_rels.append(neg_r.detach().cpu())
 
                 except Exception as e:
                     logger.warning(f"Error processing batch {batch_idx}: {e}")
@@ -343,6 +353,12 @@ class DDITester:
         # 存储结果（all_scores 为 logit/原始分；阈值比较统一使用概率）
         self.scores = all_scores.numpy()
         self.ground_truths = all_labels.numpy()
+        self.relation_ids = torch.cat(all_rels).numpy() if all_rels else np.full(len(self.scores), -1)
+        if len(self.relation_ids) != len(self.scores):
+            logger.warning(
+                "Relation id length %d != score length %d; per-relation table may be incomplete",
+                len(self.relation_ids), len(self.scores),
+            )
         probs = torch.sigmoid(all_scores).numpy()
         self.probabilities = probs
         self.predictions = (probs > self.config['threshold']).astype(int)
@@ -355,6 +371,7 @@ class DDITester:
         test_metrics['total_inference_time'] = time.time() - start_time
 
         self.test_results = test_metrics
+        self.per_relation_results = self._per_relation_metrics()
 
         # 打印结果
         self._print_results(test_metrics)
@@ -414,6 +431,39 @@ class DDITester:
 
         return metrics
 
+    def _per_relation_metrics(self) -> List[Dict[str, Any]]:
+        """按 DDI type 统计 AUC/AUPR/F1，供开题中的分关系分析。"""
+        if len(self.ground_truths) == 0 or len(self.relation_ids) != len(self.ground_truths):
+            return []
+        id_to_rel = list(getattr(self.ddi_loader, "id_to_rel", []) or [])
+        rows = []
+        for rid in sorted(set(int(x) for x in self.relation_ids.tolist())):
+            mask = self.relation_ids == rid
+            n = int(mask.sum())
+            if n < 8:
+                continue
+            y_true = self.ground_truths[mask]
+            y_score = self.scores[mask]
+            if len(np.unique(y_true)) < 2:
+                continue
+            rel_name = str(id_to_rel[rid]) if 0 <= rid < len(id_to_rel) else str(rid)
+            y_pred = (self.probabilities[mask] > float(self.config["threshold"])).astype(int)
+            rows.append({
+                "relation_id": rid,
+                "relation": rel_name,
+                "n_samples": n,
+                "n_pos": int((y_true == 1).sum()),
+                "n_neg": int((y_true == 0).sum()),
+                "auc": float(roc_auc_score(y_true, y_score)),
+                "aupr": float(average_precision_score(y_true, y_score)),
+                "f1_score": float(f1_score(y_true, y_pred, zero_division=0)),
+                "accuracy": float(accuracy_score(y_true, y_pred)),
+            })
+        rows.sort(key=lambda r: r["n_samples"], reverse=True)
+        if rows:
+            logger.info("Per-relation metrics: %d types with >=8 samples", len(rows))
+        return rows
+
     def _print_results(self, metrics):
         """打印测试结果"""
         logger.info("\n" + "=" * 50)
@@ -453,6 +503,10 @@ class DDITester:
         with open(metrics_file, 'w') as f:
             json.dump(self.test_results, f, indent=2)
         logger.info(f"Metrics saved to {metrics_file}")
+        if self.per_relation_results:
+            rel_file = os.path.join(self.config['results_dir'], 'per_relation_metrics.csv')
+            pd.DataFrame(self.per_relation_results).to_csv(rel_file, index=False)
+            logger.info("Per-relation metrics saved to %s", rel_file)
 
         # 保存预测结果
         if self.config['save_predictions'] and len(self.ground_truths) > 0:
@@ -613,6 +667,13 @@ def main():
     parser.add_argument('--batch-size', type=int, help='Override batch size')
     parser.add_argument('--subset-size', type=int, help='Use a random subset of test data')
     parser.add_argument('--threshold', type=float, help='Override prediction threshold')
+    parser.add_argument('--results-dir', type=str, help='Override results directory')
+    parser.add_argument(
+        '--ablation',
+        choices=['full', 'no_fusion', 'no_inter', 'atom_only'],
+        default='full',
+        help='Inference-time ablation; does not change checkpoint weights',
+    )
 
     args = parser.parse_args()
 
@@ -638,6 +699,9 @@ def main():
     if args.threshold is not None:
         config['threshold'] = args.threshold
         config["_threshold_overridden"] = True
+    if args.results_dir:
+        config['results_dir'] = args.results_dir
+    config['ablation_mode'] = args.ablation
 
     # 创建结果保存目录
     os.makedirs(config['results_dir'], exist_ok=True)

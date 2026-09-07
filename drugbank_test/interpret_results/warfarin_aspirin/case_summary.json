@@ -1,0 +1,237 @@
+{
+  "case_name": "warfarin_aspirin",
+  "head": "DB00682",
+  "tail": "DB00945",
+  "relation": "5",
+  "logit": 23.183481216430664,
+  "probability": 0.9999999999145834,
+  "prediction_positive": true,
+  "block_weights": [
+    0.3245887756347656,
+    0.3037984371185303,
+    0.3716128170490265
+  ],
+  "head_top_atoms": [
+    18,
+    13,
+    0,
+    16,
+    19,
+    5,
+    20,
+    21
+  ],
+  "tail_top_atoms": [
+    6,
+    0,
+    7,
+    2,
+    5,
+    11,
+    3,
+    1
+  ],
+  "head_pharmacophores": [
+    {
+      "functional_group": "酚羟基",
+      "n_atoms": 2,
+      "mean_attention": 0.42685801439794835,
+      "max_attention": 0.8289454019027236,
+      "atom_indices": [
+        12,
+        13
+      ]
+    },
+    {
+      "functional_group": "杂环",
+      "n_atoms": 1,
+      "mean_attention": 0.2542796920422802,
+      "max_attention": 0.2542796920422802,
+      "atom_indices": [
+        16
+      ]
+    },
+    {
+      "functional_group": "香豆素内酯",
+      "n_atoms": 12,
+      "mean_attention": 0.24569131926006726,
+      "max_attention": 1.0,
+      "atom_indices": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "functional_group": "芳环(疏水)",
+      "n_atoms": 12,
+      "mean_attention": 0.09142411512856864,
+      "max_attention": 0.20251058088512075,
+      "atom_indices": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        14,
+        15,
+        19,
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "functional_group": "酮",
+      "n_atoms": 4,
+      "mean_attention": 0.06630082757376433,
+      "max_attention": 0.2630085897722778,
+      "atom_indices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "tail_pharmacophores": [
+    {
+      "functional_group": "酯",
+      "n_atoms": 5,
+      "mean_attention": 0.6144581741601353,
+      "max_attention": 0.9850650966426473,
+      "atom_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "functional_group": "芳环(疏水)",
+      "n_atoms": 6,
+      "mean_attention": 0.6104107670114808,
+      "max_attention": 1.0,
+      "atom_indices": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "functional_group": "羧酸(酸性中心)",
+      "n_atoms": 3,
+      "mean_attention": 0.4950277555597215,
+      "max_attention": 0.8304917159949152,
+      "atom_indices": [
+        10,
+        11,
+        12
+      ]
+    }
+  ],
+  "head_granularity": {
+    "atom_attention_std": 0.2491153321918263,
+    "substructure_attention_std": 0.4471889228283536,
+    "dominant_granularity": "substructure",
+    "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
+  },
+  "tail_granularity": {
+    "atom_attention_std": 0.28828450880977813,
+    "substructure_attention_std": 0.3578394937002156,
+    "dominant_granularity": "substructure",
+    "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
+  },
+  "known_mechanism": {
+    "pair_name": "阿司匹林–华法林",
+    "clinical_effect": "出血风险增强",
+    "mechanism": "阿司匹林不可逆抑制血小板 COX-1，并可能竞争血浆蛋白结合；华法林抑制 VKOR，阻断维生素K循环导致凝血因子减少。",
+    "expected_groups": {
+      "DB00945": [
+        "羧酸(酸性中心)",
+        "酯",
+        "芳环(疏水)"
+      ],
+      "DB00682": [
+        "香豆素内酯",
+        "酚羟基",
+        "芳环(疏水)"
+      ]
+    },
+    "expected_sites": {
+      "DB00945": "羧基与乙酰酯（抗血小板活性相关）",
+      "DB00682": "4-羟基香豆素核 / 内酯羰基（抗凝活性相关）"
+    }
+  },
+  "head_mechanism_alignment": {
+    "expected_groups": [
+      "香豆素内酯",
+      "酚羟基",
+      "芳环(疏水)"
+    ],
+    "top_predicted_groups": [
+      "酚羟基",
+      "杂环",
+      "香豆素内酯"
+    ],
+    "top_predicted_groups_by_max": [
+      "香豆素内酯",
+      "酚羟基",
+      "酮"
+    ],
+    "hit_groups": [
+      "香豆素内酯",
+      "酚羟基"
+    ],
+    "miss_groups": [
+      "芳环(疏水)"
+    ],
+    "extra_groups": [
+      "杂环"
+    ],
+    "alignment_recall": 0.6666666666666666,
+    "expected_site": "4-羟基香豆素核 / 内酯羰基（抗凝活性相关）"
+  },
+  "tail_mechanism_alignment": {
+    "expected_groups": [
+      "羧酸(酸性中心)",
+      "酯",
+      "芳环(疏水)"
+    ],
+    "top_predicted_groups": [
+      "酯",
+      "芳环(疏水)",
+      "羧酸(酸性中心)"
+    ],
+    "top_predicted_groups_by_max": [
+      "芳环(疏水)",
+      "酯",
+      "羧酸(酸性中心)"
+    ],
+    "hit_groups": [
+      "羧酸(酸性中心)",
+      "酯",
+      "芳环(疏水)"
+    ],
+    "miss_groups": [],
+    "extra_groups": [],
+    "alignment_recall": 1.0,
+    "expected_site": "羧基与乙酰酯（抗血小板活性相关）"
+  },
+  "pair_alignment_recall": 0.8333333333333333,
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+}

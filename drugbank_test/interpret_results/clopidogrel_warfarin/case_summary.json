@@ -1,0 +1,243 @@
+{
+  "case_name": "clopidogrel_warfarin",
+  "head": "DB00758",
+  "tail": "DB00682",
+  "relation": "5",
+  "logit": -0.8686351180076599,
+  "probability": 0.29553838489773043,
+  "prediction_positive": false,
+  "block_weights": [
+    0.3245887756347656,
+    0.3037984371185303,
+    0.3716128170490265
+  ],
+  "head_top_atoms": [
+    8,
+    9,
+    17,
+    5,
+    2,
+    1,
+    14,
+    3
+  ],
+  "tail_top_atoms": [
+    18,
+    13,
+    16,
+    0,
+    20,
+    19,
+    15,
+    4
+  ],
+  "head_pharmacophores": [
+    {
+      "functional_group": "杂环",
+      "n_atoms": 2,
+      "mean_attention": 0.7089744313209285,
+      "max_attention": 0.8123713856641822,
+      "atom_indices": [
+        1,
+        9
+      ]
+    },
+    {
+      "functional_group": "芳环(疏水)",
+      "n_atoms": 6,
+      "mean_attention": 0.3621442227538527,
+      "max_attention": 0.6755014957290315,
+      "atom_indices": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "functional_group": "卤素",
+      "n_atoms": 1,
+      "mean_attention": 0.27231603430618023,
+      "max_attention": 0.27231603430618023,
+      "atom_indices": [
+        20
+      ]
+    },
+    {
+      "functional_group": "酯",
+      "n_atoms": 5,
+      "mean_attention": 0.21111787451489955,
+      "max_attention": 0.40298645313584514,
+      "atom_indices": [
+        0,
+        10,
+        11,
+        12,
+        13
+      ]
+    }
+  ],
+  "tail_pharmacophores": [
+    {
+      "functional_group": "酚羟基",
+      "n_atoms": 2,
+      "mean_attention": 0.5074272509389599,
+      "max_attention": 0.9713142825278742,
+      "atom_indices": [
+        12,
+        13
+      ]
+    },
+    {
+      "functional_group": "杂环",
+      "n_atoms": 1,
+      "mean_attention": 0.3690220783515588,
+      "max_attention": 0.3690220783515588,
+      "atom_indices": [
+        16
+      ]
+    },
+    {
+      "functional_group": "香豆素内酯",
+      "n_atoms": 12,
+      "mean_attention": 0.2675991392741817,
+      "max_attention": 1.0,
+      "atom_indices": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "functional_group": "芳环(疏水)",
+      "n_atoms": 12,
+      "mean_attention": 0.0909787516975397,
+      "max_attention": 0.21164733867472135,
+      "atom_indices": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        14,
+        15,
+        19,
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "functional_group": "酮",
+      "n_atoms": 4,
+      "mean_attention": 0.0731935614703858,
+      "max_attention": 0.2892442864315979,
+      "atom_indices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "head_granularity": {
+    "atom_attention_std": 0.2628555984542126,
+    "substructure_attention_std": 0.36104285951014053,
+    "dominant_granularity": "substructure",
+    "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
+  },
+  "tail_granularity": {
+    "atom_attention_std": 0.26726144395666124,
+    "substructure_attention_std": 0.44015124854126647,
+    "dominant_granularity": "substructure",
+    "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
+  },
+  "known_mechanism": {
+    "pair_name": "氯吡格雷–华法林",
+    "clinical_effect": "抗血小板+抗凝，出血风险叠加",
+    "mechanism": "氯吡格雷经CYP2C19活化后抑制P2Y12；华法林抑制VKOR，二者作用通路不同但终点都影响止血。",
+    "expected_groups": {
+      "DB00758": [
+        "酯",
+        "卤素",
+        "杂环"
+      ],
+      "DB00682": [
+        "香豆素内酯",
+        "酚羟基"
+      ]
+    },
+    "expected_sites": {
+      "DB00758": "噻吩并吡啶杂环与甲酯",
+      "DB00682": "4-羟基香豆素核"
+    }
+  },
+  "head_mechanism_alignment": {
+    "expected_groups": [
+      "酯",
+      "卤素",
+      "杂环"
+    ],
+    "top_predicted_groups": [
+      "杂环",
+      "芳环(疏水)",
+      "卤素"
+    ],
+    "top_predicted_groups_by_max": [
+      "杂环",
+      "芳环(疏水)",
+      "酯"
+    ],
+    "hit_groups": [
+      "酯",
+      "卤素",
+      "杂环"
+    ],
+    "miss_groups": [],
+    "extra_groups": [
+      "芳环(疏水)"
+    ],
+    "alignment_recall": 1.0,
+    "expected_site": "噻吩并吡啶杂环与甲酯"
+  },
+  "tail_mechanism_alignment": {
+    "expected_groups": [
+      "香豆素内酯",
+      "酚羟基"
+    ],
+    "top_predicted_groups": [
+      "酚羟基",
+      "杂环",
+      "香豆素内酯"
+    ],
+    "top_predicted_groups_by_max": [
+      "香豆素内酯",
+      "酚羟基",
+      "杂环"
+    ],
+    "hit_groups": [
+      "香豆素内酯",
+      "酚羟基"
+    ],
+    "miss_groups": [],
+    "extra_groups": [
+      "杂环"
+    ],
+    "alignment_recall": 1.0,
+    "expected_site": "4-羟基香豆素核"
+  },
+  "pair_alignment_recall": 1.0,
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+}

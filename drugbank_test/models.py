@@ -140,18 +140,67 @@ class DGN_DDI_Block(nn.Module):
 
         return h_out_list, t_out_list, h_global, t_global, h_w, t_w
 
+    @staticmethod
+    def _masked_node_attn(attn, src_mask, dst_mask) -> Optional[torch.Tensor]:
+        """将 dense 图间注意力压成源节点重要性 [n_src]。"""
+        if attn is None:
+            return None
+        a = attn[0] if attn.dim() == 3 else attn
+        if src_mask is not None and dst_mask is not None:
+            sm = src_mask[0] if src_mask.dim() == 2 else src_mask
+            dm = dst_mask[0] if dst_mask.dim() == 2 else dst_mask
+            a = a[sm][:, dm]
+        row = a.sum(dim=-1)
+        total = row.sum()
+        if float(total) > 0:
+            row = row / total
+        return row.detach()
+
+    @staticmethod
+    def _pool_to_node(weight_tuple, num_nodes: int, device) -> torch.Tensor:
+        """GAT return_attention_weights -> 按入边聚合的节点权重。"""
+        node = torch.zeros(num_nodes, device=device)
+        if not weight_tuple:
+            return node
+        edge_index, alpha = weight_tuple
+        if edge_index is None or alpha is None or alpha.numel() == 0:
+            return node
+        if alpha.dim() > 1:
+            alpha = alpha.mean(dim=-1)
+        dst = edge_index[1]
+        valid = (dst >= 0) & (dst < num_nodes) & (torch.arange(dst.size(0), device=dst.device) < alpha.size(0))
+        if alpha.size(0) != dst.size(0):
+            n = min(int(alpha.size(0)), int(dst.size(0)))
+            dst = dst[:n]
+            alpha = alpha[:n]
+            valid = (dst >= 0) & (dst < num_nodes)
+        if valid.sum() == 0:
+            return node
+        node = node.to(dtype=alpha.dtype)
+        node.index_add_(0, dst[valid], alpha[valid])
+        total = node.sum()
+        if float(total) > 0:
+            node = node / total
+        return node.detach()
+
     def forward(self, h_data: Dict[str, Data], t_data: Dict[str, Data],
-                b_graph: Optional[Dict[str, torch.Tensor]] = None) -> Tuple[
-        Dict[str, Data], Dict[str, Data], torch.Tensor, torch.Tensor,
-        Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
+                b_graph: Optional[Dict[str, torch.Tensor]] = None,
+                return_explain: bool = False):
 
         device = h_data['atom'].x.device
 
         try:
-            h_intra_atom = self.intra_att(h_data['atom'])
-            t_intra_atom = self.intra_att(t_data['atom'])
-            h_intra_sub = self.intra_att(h_data['substruct'])
-            t_intra_sub = self.intra_att(t_data['substruct'])
+            if return_explain:
+                h_intra_atom, h_intra_w_a = self.intra_att(h_data['atom'], return_attn=True)
+                t_intra_atom, t_intra_w_a = self.intra_att(t_data['atom'], return_attn=True)
+                h_intra_sub, h_intra_w_s = self.intra_att(h_data['substruct'], return_attn=True)
+                t_intra_sub, t_intra_w_s = self.intra_att(t_data['substruct'], return_attn=True)
+            else:
+                h_intra_atom = self.intra_att(h_data['atom'])
+                t_intra_atom = self.intra_att(t_data['atom'])
+                h_intra_sub = self.intra_att(h_data['substruct'])
+                t_intra_sub = self.intra_att(t_data['substruct'])
+                h_intra_w_a = t_intra_w_a = h_intra_w_s = t_intra_w_s = None
 
             fused_b_graph = None
             substruct_b_graph = None
@@ -159,8 +208,18 @@ class DGN_DDI_Block(nn.Module):
                 fused_b_graph = b_graph.get('fused', b_graph.get('atom', None))
                 substruct_b_graph = b_graph.get('substruct', None)
 
-            h_inter_atom, t_inter_atom = self.inter_att(h_data['atom'], t_data['atom'], fused_b_graph)
-            h_inter_sub, t_inter_sub = self.inter_att(h_data['substruct'], t_data['substruct'], substruct_b_graph)
+            if return_explain:
+                h_inter_atom, t_inter_atom, attn_ht_a, attn_th_a, h_amask, t_amask = self.inter_att(
+                    h_data['atom'], t_data['atom'], fused_b_graph, return_attn=True
+                )
+                h_inter_sub, t_inter_sub, attn_ht_s, attn_th_s, h_smask, t_smask = self.inter_att(
+                    h_data['substruct'], t_data['substruct'], substruct_b_graph, return_attn=True
+                )
+            else:
+                h_inter_atom, t_inter_atom = self.inter_att(h_data['atom'], t_data['atom'], fused_b_graph)
+                h_inter_sub, t_inter_sub = self.inter_att(h_data['substruct'], t_data['substruct'], substruct_b_graph)
+                attn_ht_a = attn_th_a = attn_ht_s = attn_th_s = None
+                h_amask = t_amask = h_smask = t_smask = None
 
             h_fused_atom = self._cat_feats(h_intra_atom, h_inter_atom)
             t_fused_atom = self._cat_feats(t_intra_atom, t_inter_atom)
@@ -200,6 +259,21 @@ class DGN_DDI_Block(nn.Module):
 
             h_global = global_mean_pool(h_x, h_data['atom'].batch)
             t_global = global_mean_pool(t_x, t_data['atom'].batch)
+
+            if return_explain:
+                explain = {
+                    "intra_h_atom": h_intra_w_a,
+                    "intra_t_atom": t_intra_w_a,
+                    "intra_h_sub": h_intra_w_s,
+                    "intra_t_sub": t_intra_w_s,
+                    "inter_h_atom": self._masked_node_attn(attn_ht_a, h_amask, t_amask),
+                    "inter_t_atom": self._masked_node_attn(attn_th_a, t_amask, h_amask),
+                    "inter_h_sub": self._masked_node_attn(attn_ht_s, h_smask, t_smask),
+                    "inter_t_sub": self._masked_node_attn(attn_th_s, t_smask, h_smask),
+                    "pool_h_atom": self._pool_to_node(h_weight, h_x.size(0), h_x.device),
+                    "pool_t_atom": self._pool_to_node(t_weight, t_x.size(0), t_x.device),
+                }
+                return h_data_updated, t_data_updated, h_global, t_global, h_weight, t_weight, explain
 
             return h_data_updated, t_data_updated, h_global, t_global, h_weight, t_weight
 
@@ -247,6 +321,7 @@ class DGN_DDI(nn.Module):
         self.score_higher_is_better = True
         # 可学习的 logit 缩放因子，初始值1.0；优化器会根据梯度自动调整。
         self.logit_scale = nn.Parameter(torch.tensor(1.0))
+        self.ablation_mode = None
 
         # 存储数据相关信息
         self.drug_graph_dict = drug_graph_dict
@@ -257,6 +332,19 @@ class DGN_DDI(nn.Module):
         self._gpu_drug_static: Dict[str, Dict] = {}
         self._encode_step_cache: Dict[str, Dict] = {}
         self._preload_drug_static_to_device()
+
+    def set_ablation_mode(self, mode: Optional[str] = None) -> None:
+        """推理消融开关。None/full 为完整模型，不改变已加载权重。"""
+        if mode in (None, "", "full"):
+            mode = None
+        allowed = {None, "no_fusion", "no_inter", "atom_only"}
+        if mode not in allowed:
+            raise ValueError(f"Unknown ablation mode {mode!r}, expected one of full/no_fusion/no_inter/atom_only")
+        self.ablation_mode = mode
+        for module in self.modules():
+            if hasattr(module, "ablation_mode"):
+                module.ablation_mode = mode
+        logger.info("Ablation mode set to %s", mode or "full")
 
     def _preload_drug_static_to_device(self) -> None:
         """将子结构图与 atom2substruct 预载到 device，避免每次 forward 重复 .to()。"""
@@ -603,18 +691,24 @@ class DGN_DDI(nn.Module):
             logger.error(f"b_graph type: {type(b_graph)}")
             raise e
 
+    @staticmethod
+    def _avg_tensors(tensors: List[Optional[torch.Tensor]]) -> Optional[torch.Tensor]:
+        valid = [t for t in tensors if t is not None and isinstance(t, torch.Tensor) and t.numel() > 0]
+        if not valid:
+            return None
+        n = min(t.size(0) for t in valid)
+        stacked = torch.stack([t[:n].float() for t in valid], dim=0)
+        return stacked.mean(dim=0)
+
     def forward_with_weight(self, h_data, t_data, rels, b_graph):
-        """带权重的前向传播，用于可解释性分析"""
+        """带注意力权重的前向传播，用于可解释性分析。分数计算与 forward 一致。"""
         self._encode_step_cache.clear()
         try:
-            # 处理输入数据格式（与forward方法类似）
             if isinstance(b_graph, dict):
                 h_substruct = b_graph.get('h_substruct', None)
                 t_substruct = b_graph.get('t_substruct', None)
-
                 h_data_list = self._encode_drug_from_batch(h_data, h_substruct)
                 t_data_list = self._encode_drug_from_batch(t_data, t_substruct)
-
                 b_graph_processed = {
                     key: value for key, value in b_graph.items()
                     if key not in ['h_substruct', 't_substruct'] and value is not None
@@ -624,66 +718,88 @@ class DGN_DDI(nn.Module):
                 t_data_list = self._encode_drug_from_batch(t_data)
                 b_graph_processed = {'fused': b_graph} if b_graph is not None else {}
 
-            # 通过DGN-DDI块处理并返回权重
-            repr_h, repr_t, weight_h_list_all, weight_t_list_all = self._process_blocks(
-                h_data_list, t_data_list, b_graph_processed, return_weights=True
-            )
+            bsz = len(h_data_list)
+            pair_explains: List[Dict] = [dict(
+                intra_h_atom=[], intra_t_atom=[], intra_h_sub=[], intra_t_sub=[],
+                inter_h_atom=[], inter_t_atom=[], inter_h_sub=[], inter_t_sub=[],
+                pool_h_atom=[], pool_t_atom=[],
+            ) for _ in range(bsz)]
+            repr_h_blocks, repr_t_blocks = [], []
 
-            # 数值稳定性处理
+            for block in self.blocks:
+                next_h, next_t = [], []
+                r_h_list, r_t_list = [], []
+                for i in range(bsz):
+                    current_b = {}
+                    if b_graph_processed:
+                        for key, tensor in b_graph_processed.items():
+                            if isinstance(tensor, torch.Tensor) and tensor.dim() == 3:
+                                current_b[key] = tensor[i] if i < tensor.size(0) else tensor[0]
+                            else:
+                                current_b[key] = tensor
+                    h_i, t_i, r_h, r_t, _, _, expl = block.forward(
+                        h_data_list[i], t_data_list[i], current_b, return_explain=True
+                    )
+                    if r_h.dim() == 1:
+                        r_h = r_h.unsqueeze(0)
+                        r_t = r_t.unsqueeze(0)
+                    next_h.append(h_i)
+                    next_t.append(t_i)
+                    r_h_list.append(r_h)
+                    r_t_list.append(r_t)
+                    for k, v in expl.items():
+                        if k in pair_explains[i]:
+                            pair_explains[i][k].append(v)
+                h_data_list, t_data_list = next_h, next_t
+                repr_h_blocks.append(torch.cat(r_h_list, dim=0))
+                repr_t_blocks.append(torch.cat(r_t_list, dim=0))
+
+            repr_h = torch.stack(repr_h_blocks, dim=1)
+            repr_t = torch.stack(repr_t_blocks, dim=1)
             repr_h = self._safe_tensor_operation(repr_h, "repr_h_with_weight")
             repr_t = self._safe_tensor_operation(repr_t, "repr_t_with_weight")
 
-            # 双向协同注意力（可解释分支保持与 forward 一致）
             attentions_h = self.co_attention(repr_h, repr_t)
             attentions_t = self.co_attention(repr_t, repr_h)
             attentions_h = self._safe_tensor_operation(attentions_h, "attentions_h_with_weight")
             attentions_t = self._safe_tensor_operation(attentions_t, "attentions_t_with_weight")
 
-            # 可学习 block 权重加权聚合（与 forward 保持一致）。
-            block_w = torch.softmax(self.block_weights, dim=0).view(1, -1, 1)
-            repr_h_agg = (attentions_h * block_w).sum(dim=1)
-            repr_t_agg = (attentions_t * block_w).sum(dim=1)
-
+            block_w = torch.softmax(self.block_weights, dim=0)
+            block_w_view = block_w.view(1, -1, 1)
+            repr_h_agg = (attentions_h * block_w_view).sum(dim=1)
+            repr_t_agg = (attentions_t * block_w_view).sum(dim=1)
             repr_h_agg = self._safe_tensor_operation(repr_h_agg, "repr_h_agg_with_weight")
             repr_t_agg = self._safe_tensor_operation(repr_t_agg, "repr_t_agg_with_weight")
 
-            # 计算得分
             raw_scores = self.KGE(repr_h_agg, repr_t_agg, rels)
             raw_scores = self._safe_tensor_operation(raw_scores, "raw_scores_with_weight")
-
             if not self.score_higher_is_better:
                 raw_scores = -raw_scores
             scale = self.logit_scale.abs() + 1e-6
-            scores = raw_scores / scale
+            scores = self._safe_tensor_operation(raw_scores / scale, "final_scores_with_weight")
 
-            scores = self._safe_tensor_operation(scores, "final_scores_with_weight")
+            pairs = []
+            for i, raw in enumerate(pair_explains):
+                pairs.append({
+                    "intra_h_atom": self._avg_tensors(raw["intra_h_atom"]),
+                    "intra_t_atom": self._avg_tensors(raw["intra_t_atom"]),
+                    "intra_h_sub": self._avg_tensors(raw["intra_h_sub"]),
+                    "intra_t_sub": self._avg_tensors(raw["intra_t_sub"]),
+                    "inter_h_atom": self._avg_tensors(raw["inter_h_atom"]),
+                    "inter_t_atom": self._avg_tensors(raw["inter_t_atom"]),
+                    "inter_h_sub": self._avg_tensors(raw["inter_h_sub"]),
+                    "inter_t_sub": self._avg_tensors(raw["inter_t_sub"]),
+                    "pool_h_atom": self._avg_tensors(raw["pool_h_atom"]),
+                    "pool_t_atom": self._avg_tensors(raw["pool_t_atom"]),
+                    "atom2substruct_h": h_data_list[i]["atom2substruct"],
+                    "atom2substruct_t": t_data_list[i]["atom2substruct"],
+                })
 
-            # 处理权重
-            if weight_h_list_all and weight_t_list_all:
-                try:
-                    weight_h = torch.cat(
-                        [torch.stack(w_list).mean(dim=0).mean(dim=-1, keepdim=True)
-                         for w_list in weight_h_list_all], dim=0
-                    )
-                    weight_t = torch.cat(
-                        [torch.stack(w_list).mean(dim=0).mean(dim=-1, keepdim=True)
-                         for w_list in weight_t_list_all], dim=0
-                    )
-
-                    weight_h = self._safe_tensor_operation(weight_h, "weight_h")
-                    weight_t = self._safe_tensor_operation(weight_t, "weight_t")
-                except Exception as weight_error:
-                    logger.warning(f"Error processing weights: {weight_error}, using empty tensors")
-                    weight_h = torch.empty(0, device=self.device)
-                    weight_t = torch.empty(0, device=self.device)
-            else:
-                weight_h = torch.empty(0, device=self.device)
-                weight_t = torch.empty(0, device=self.device)
-
-            ei_h = weight_h.new_empty(0)
-            ei_t = weight_t.new_empty(0)
-
-            return scores, ((ei_h, weight_h), (ei_t, weight_t))
+            explain = {
+                "block_weights": block_w.detach(),
+                "pairs": pairs,
+            }
+            return scores, explain
 
         except Exception as e:
             logger.error(f"Error in forward_with_weight: {e}")

@@ -1635,6 +1635,15 @@ class DDITrainer:
         """
         filename = 'best_model.pth' if checkpoint_type == 'best' else 'last_epoch.pth'
         path = os.path.join(self.config['save_dir'], filename)
+        lock_dir = os.path.join(self.config['save_dir'], 'paper_lock')
+        lock_file = os.path.join(lock_dir, 'LOCK.txt')
+        if checkpoint_type == 'best' and os.path.exists(lock_file):
+            locked_best = os.path.join(lock_dir, 'best_model.pth')
+            logger.warning(
+                "PAPER_LOCK is active; skip overwriting %s (frozen copy: %s)",
+                path, locked_best,
+            )
+            return
         ckpt = self._build_checkpoint(
             epoch,
             epoch_in_progress=epoch_in_progress and checkpoint_type == 'last',

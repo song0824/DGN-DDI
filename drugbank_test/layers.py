@@ -96,6 +96,7 @@ class InterGraphAttention(nn.Module):
 
         # 添加双粒度融合权重
         self.granularity_weight = nn.Parameter(torch.tensor(0.6))  # 原子级权重
+        self.ablation_mode = None
 
     def _safe_attention_computation(self, q, k, v, mask=None, bias=None):
         """安全的注意力计算，处理数值稳定性"""
@@ -120,7 +121,7 @@ class InterGraphAttention(nn.Module):
         return out, attn
 
     def forward(self, h_data: Data, t_data: Data,
-                b_graph: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                b_graph: Optional[torch.Tensor] = None, return_attn: bool = False):
         """
         前向传播，支持双粒度特征处理
 
@@ -128,14 +129,23 @@ class InterGraphAttention(nn.Module):
             h_data: 头实体图数据
             t_data: 尾实体图数据
             b_graph: 二部图张量或字典
+            return_attn: 为 True 时额外返回 (attn_ht, attn_th, h_mask, t_mask)
         """
         h_x, t_x = h_data.x, t_data.x
         h_batch, t_batch = h_data.batch, t_data.batch
 
+        if getattr(self, "ablation_mode", None) == "no_inter":
+            if return_attn:
+                return h_x, t_x, None, None, None, None
+            return h_x, t_x
+
         # 鲁棒性检查，处理空图或单节点图
         if h_x.size(0) == 0 or t_x.size(0) == 0:
-            return torch.empty(0, self.in_dim, device=h_x.device), \
-                torch.empty(0, self.in_dim, device=t_x.device)
+            empty_h = torch.empty(0, self.in_dim, device=h_x.device)
+            empty_t = torch.empty(0, self.in_dim, device=t_x.device)
+            if return_attn:
+                return empty_h, empty_t, None, None, None, None
+            return empty_h, empty_t
 
         # 将批次中的图数据转换为密集张量
         h_dense, h_mask = to_dense_batch(h_x, h_batch)
@@ -143,8 +153,11 @@ class InterGraphAttention(nn.Module):
 
         # 检查密集张量是否有效，特别是当批次只包含单个图时
         if h_dense.size(0) == 0 or h_dense.size(1) == 0 or t_dense.size(0) == 0 or t_dense.size(1) == 0:
-            return torch.empty(0, self.in_dim, device=h_x.device), \
-                torch.empty(0, self.in_dim, device=t_x.device)
+            empty_h = torch.empty(0, self.in_dim, device=h_x.device)
+            empty_t = torch.empty(0, self.in_dim, device=t_x.device)
+            if return_attn:
+                return empty_h, empty_t, None, None, None, None
+            return empty_h, empty_t
 
         try:
             # 转换为密集表示
@@ -206,6 +219,8 @@ class InterGraphAttention(nn.Module):
             out_h_final = self.norm(out_h_flat + h_x, h_batch)
             out_t_final = self.norm(out_t_flat + t_x, t_batch)
 
+            if return_attn:
+                return out_h_final, out_t_final, attn_ht.detach(), attn_th.detach(), h_mask, t_mask
             return out_h_final, out_t_final
 
         except Exception as e:
@@ -290,23 +305,28 @@ class IntraGraphAttention(nn.Module):
 
         # 缩放因子
         self.scale = 1.0 / (self.dim_per_head ** 0.5)
+        self.ablation_mode = None
 
-    def forward(self, data: Data) -> torch.Tensor:
+    def forward(self, data: Data, return_attn: bool = False):
         """
         前向传播，处理图内自注意力
 
         Args:
             data: 图数据对象，包含节点特征和边信息
+            return_attn: 为 True 时额外返回按头平均的节点重要性 [num_nodes]
         """
 
         x = data.x
         batch = data.batch
 
         if x.size(0) == 0:
-            return x
+            empty_w = x.new_zeros(0)
+            return (x, empty_w) if return_attn else x
         if torch.max(torch.bincount(batch)) == 1:
             # 单节点图不应返回全零；保留原始特征并做轻量归一化，避免信息塌缩。
-            return self.norm(x, batch)
+            out = self.norm(x, batch)
+            node_w = torch.ones(x.size(0), device=x.device, dtype=x.dtype)
+            return (out, node_w) if return_attn else out
 
             # 将批次中的图数据转换为密集张量
         x_dense, mask = to_dense_batch(x, batch)
@@ -345,6 +365,7 @@ class IntraGraphAttention(nn.Module):
                 else:
                     attn_weights = torch.softmax(attn_scores, dim=0)
 
+            node_attn = attn_weights.detach().mean(dim=-1)
             # 应用注意力权重
             attn_weights = self.dropout(attn_weights)
             attn_weights = attn_weights.unsqueeze(-1)  # [num_nodes, heads, 1]
@@ -360,6 +381,8 @@ class IntraGraphAttention(nn.Module):
             # 残差连接和归一化
             output = self.norm(out + x, batch)
 
+            if return_attn:
+                return output, node_attn
             return output
 
         except Exception as e:
@@ -597,6 +620,7 @@ class DualGranularityFusion(nn.Module):
 
         # 归一化
         self.norm = RobustLayerNorm(atom_dim)
+        self.ablation_mode = None
 
     def forward(self, atom_feats: torch.Tensor, sub_feats: torch.Tensor,
                 sub_nodes: Union[torch.Tensor, List, None]) -> torch.Tensor:
@@ -609,6 +633,9 @@ class DualGranularityFusion(nn.Module):
             sub_nodes: 子结构到原子的映射关系
         """
         try:
+            if getattr(self, "ablation_mode", None) in ("no_fusion", "atom_only"):
+                return atom_feats
+
             # 聚合子结构特征到原子级别
             agg_sub = substructure_to_atom_aggregation(atom_feats.size(0), sub_feats, sub_nodes)
 
