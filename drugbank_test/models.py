@@ -334,12 +334,20 @@ class DGN_DDI(nn.Module):
         self._preload_drug_static_to_device()
 
     def set_ablation_mode(self, mode: Optional[str] = None) -> None:
-        """推理消融开关。None/full 为完整模型，不改变已加载权重。"""
+        """推理消融开关。None/full 为完整模型，不改变已加载权重。
+
+        atom_only 是 no_fusion 的别名，不要当成两个独立实验。
+        """
         if mode in (None, "", "full"):
             mode = None
-        allowed = {None, "no_fusion", "no_inter", "atom_only"}
+        if mode == "atom_only":
+            mode = "no_fusion"
+        allowed = {None, "no_fusion", "no_inter", "substruct_only"}
         if mode not in allowed:
-            raise ValueError(f"Unknown ablation mode {mode!r}, expected one of full/no_fusion/no_inter/atom_only")
+            raise ValueError(
+                f"Unknown ablation mode {mode!r}, expected one of "
+                "full/no_fusion/no_inter/atom_only/substruct_only"
+            )
         self.ablation_mode = mode
         for module in self.modules():
             if hasattr(module, "ablation_mode"):

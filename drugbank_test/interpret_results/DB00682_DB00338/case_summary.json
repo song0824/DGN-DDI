@@ -1,79 +1,42 @@
 {
-  "case_name": "acetaminophen_warfarin",
-  "head": "DB00316",
-  "tail": "DB00682",
-  "relation": "5",
-  "logit": -50.0,
-  "probability": 1.928749847963918e-22,
-  "prediction_positive": false,
+  "case_name": "DB00682_DB00338",
+  "head": "DB00682",
+  "tail": "DB00338",
+  "relation": "72",
+  "logit": 16.57730484008789,
+  "probability": 0.9999999368216972,
+  "prediction_positive": true,
   "block_weights": [
     0.3245887756347656,
     0.3037984371185303,
     0.3716128170490265
   ],
   "head_top_atoms": [
-    8,
-    3,
-    2,
-    0,
-    4,
-    5,
-    10,
-    1
-  ],
-  "tail_top_atoms": [
     18,
     13,
     16,
     0,
-    5,
-    21,
     20,
+    21,
+    15,
     19
+  ],
+  "tail_top_atoms": [
+    12,
+    7,
+    0,
+    21,
+    1,
+    14,
+    6,
+    5
   ],
   "head_pharmacophores": [
     {
       "functional_group": "酚羟基",
       "n_atoms": 2,
-      "mean_attention": 0.5,
-      "max_attention": 1.0,
-      "atom_indices": [
-        7,
-        8
-      ]
-    },
-    {
-      "functional_group": "酰胺",
-      "n_atoms": 3,
-      "mean_attention": 0.4887486258102311,
-      "max_attention": 0.8435465572834051,
-      "atom_indices": [
-        1,
-        2,
-        3
-      ]
-    },
-    {
-      "functional_group": "芳环(疏水)",
-      "n_atoms": 6,
-      "mean_attention": 0.17481481615549135,
-      "max_attention": 0.35123334800577993,
-      "atom_indices": [
-        4,
-        5,
-        6,
-        7,
-        9,
-        10
-      ]
-    }
-  ],
-  "tail_pharmacophores": [
-    {
-      "functional_group": "酚羟基",
-      "n_atoms": 2,
-      "mean_attention": 0.37266585602258395,
-      "max_attention": 0.7233859444545623,
+      "mean_attention": 0.5000809759247979,
+      "max_attention": 0.9736992615187058,
       "atom_indices": [
         12,
         13
@@ -82,8 +45,8 @@
     {
       "functional_group": "杂环",
       "n_atoms": 1,
-      "mean_attention": 0.3412388260986712,
-      "max_attention": 0.3412388260986712,
+      "mean_attention": 0.3635512042628429,
+      "max_attention": 0.3635512042628429,
       "atom_indices": [
         16
       ]
@@ -91,7 +54,7 @@
     {
       "functional_group": "香豆素内酯",
       "n_atoms": 12,
-      "mean_attention": 0.2421998871081441,
+      "mean_attention": 0.2619803641756189,
       "max_attention": 1.0,
       "atom_indices": [
         11,
@@ -111,8 +74,8 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 12,
-      "mean_attention": 0.09423826443749878,
-      "max_attention": 0.258209425916329,
+      "mean_attention": 0.09275294057473421,
+      "max_attention": 0.17258966102639706,
       "atom_indices": [
         5,
         6,
@@ -131,8 +94,8 @@
     {
       "functional_group": "酮",
       "n_atoms": 4,
-      "mean_attention": 0.0665999208168734,
-      "max_attention": 0.26406041730546015,
+      "mean_attention": 0.07209997067250262,
+      "max_attention": 0.28526372315413795,
       "atom_indices": [
         0,
         1,
@@ -141,26 +104,52 @@
       ]
     }
   ],
+  "tail_pharmacophores": [
+    {
+      "functional_group": "芳环(疏水)",
+      "n_atoms": 6,
+      "mean_attention": 0.21074621114439007,
+      "max_attention": 0.6620494785745927,
+      "atom_indices": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "functional_group": "杂环",
+      "n_atoms": 3,
+      "mean_attention": 0.032476523051066575,
+      "max_attention": 0.05286729762391873,
+      "atom_indices": [
+        8,
+        10,
+        15
+      ]
+    }
+  ],
   "head_granularity": {
-    "atom_attention_std": 0.31192427811493373,
-    "substructure_attention_std": 0.4484819539236928,
+    "atom_attention_std": 0.2669452235688424,
+    "substructure_attention_std": 0.4522062450075245,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
   "tail_granularity": {
-    "atom_attention_std": 0.24222059977924645,
-    "substructure_attention_std": 0.44808315123888864,
+    "atom_attention_std": 0.258179390974507,
+    "substructure_attention_std": 0.35879308157240036,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
   "known_mechanism": {
-    "pair_name": "对乙酰氨基酚–华法林",
-    "clinical_effect": "高剂量下可能增强抗凝、升高INR",
-    "mechanism": "对乙酰氨基酚代谢可能干扰维生素K循环；华法林仍作用于VKOR。",
+    "pair_name": "奥美拉唑–华法林",
+    "clinical_effect": "PPI可能轻度影响华法林代谢",
+    "mechanism": "奥美拉唑经CYP2C19代谢，可能改变S-华法林代谢。",
     "expected_groups": {
-      "DB00316": [
-        "酚羟基",
-        "酰胺",
+      "DB00338": [
+        "杂环",
         "芳环(疏水)"
       ],
       "DB00682": [
@@ -169,37 +158,11 @@
       ]
     },
     "expected_sites": {
-      "DB00316": "酚羟基与乙酰胺",
+      "DB00338": "苯并咪唑与吡啶",
       "DB00682": "4-羟基香豆素核"
     }
   },
   "head_mechanism_alignment": {
-    "expected_groups": [
-      "酚羟基",
-      "酰胺",
-      "芳环(疏水)"
-    ],
-    "top_predicted_groups": [
-      "酚羟基",
-      "酰胺",
-      "芳环(疏水)"
-    ],
-    "top_predicted_groups_by_max": [
-      "酚羟基",
-      "酰胺",
-      "芳环(疏水)"
-    ],
-    "hit_groups": [
-      "酚羟基",
-      "酰胺",
-      "芳环(疏水)"
-    ],
-    "miss_groups": [],
-    "extra_groups": [],
-    "alignment_recall": 1.0,
-    "expected_site": "酚羟基与乙酰胺"
-  },
-  "tail_mechanism_alignment": {
     "expected_groups": [
       "香豆素内酯",
       "酚羟基"
@@ -225,13 +188,35 @@
     "alignment_recall": 1.0,
     "expected_site": "4-羟基香豆素核"
   },
+  "tail_mechanism_alignment": {
+    "expected_groups": [
+      "杂环",
+      "芳环(疏水)"
+    ],
+    "top_predicted_groups": [
+      "芳环(疏水)",
+      "杂环"
+    ],
+    "top_predicted_groups_by_max": [
+      "芳环(疏水)",
+      "杂环"
+    ],
+    "hit_groups": [
+      "杂环",
+      "芳环(疏水)"
+    ],
+    "miss_groups": [],
+    "extra_groups": [],
+    "alignment_recall": 1.0,
+    "expected_site": "苯并咪唑与吡啶"
+  },
   "pair_alignment_recall": 1.0,
   "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。必须同时看两个方向的 logit；alignment_recall 不是预测准确率；请标明 train/val/test。",
   "split": {
-    "forward_splits": [],
-    "reverse_splits": [
+    "forward_splits": [
       "train"
     ],
+    "reverse_splits": [],
     "splits": [
       "train"
     ],
@@ -239,5 +224,5 @@
     "in_train": true,
     "in_val": false
   },
-  "reverse_logit": 20.877384185791016
+  "reverse_logit": -26.345733642578125
 }

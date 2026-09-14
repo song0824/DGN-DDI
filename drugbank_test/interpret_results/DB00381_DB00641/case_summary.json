@@ -1,0 +1,227 @@
+{
+  "case_name": "DB00381_DB00641",
+  "head": "DB00381",
+  "tail": "DB00641",
+  "relation": "72",
+  "logit": 14.173105239868164,
+  "probability": 0.9999993006440097,
+  "prediction_positive": true,
+  "block_weights": [
+    0.3245887756347656,
+    0.3037984371185303,
+    0.3716128170490265
+  ],
+  "head_top_atoms": [
+    14,
+    19,
+    13,
+    12,
+    15,
+    5,
+    21,
+    20
+  ],
+  "tail_top_atoms": [
+    29,
+    7,
+    17,
+    24,
+    27,
+    26,
+    16,
+    3
+  ],
+  "head_pharmacophores": [
+    {
+      "functional_group": "杂环",
+      "n_atoms": 1,
+      "mean_attention": 0.8523067240258648,
+      "max_attention": 0.8523067240258648,
+      "atom_indices": [
+        12
+      ]
+    },
+    {
+      "functional_group": "芳环(疏水)",
+      "n_atoms": 6,
+      "mean_attention": 0.6028359610969136,
+      "max_attention": 0.9999621512573899,
+      "atom_indices": [
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "functional_group": "酯",
+      "n_atoms": 10,
+      "mean_attention": 0.5221127428654879,
+      "max_attention": 0.7884733429202044,
+      "atom_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        15,
+        24,
+        25,
+        26,
+        27
+      ]
+    },
+    {
+      "functional_group": "卤素",
+      "n_atoms": 1,
+      "mean_attention": 0.01054133935854684,
+      "max_attention": 0.01054133935854684,
+      "atom_indices": [
+        23
+      ]
+    }
+  ],
+  "tail_pharmacophores": [
+    {
+      "functional_group": "醇羟基",
+      "n_atoms": 2,
+      "mean_attention": 0.3383837036681585,
+      "max_attention": 0.426603683188511,
+      "atom_indices": [
+        16,
+        17
+      ]
+    },
+    {
+      "functional_group": "杂环",
+      "n_atoms": 1,
+      "mean_attention": 0.1448095609581599,
+      "max_attention": 0.1448095609581599,
+      "atom_indices": [
+        21
+      ]
+    },
+    {
+      "functional_group": "酯",
+      "n_atoms": 10,
+      "mean_attention": 0.08568364613285631,
+      "max_attention": 0.4003164964775189,
+      "atom_indices": [
+        1,
+        14,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25
+      ]
+    }
+  ],
+  "head_granularity": {
+    "atom_attention_std": 0.31867168338882457,
+    "substructure_attention_std": 0.3434215923488961,
+    "dominant_granularity": "substructure",
+    "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
+  },
+  "tail_granularity": {
+    "atom_attention_std": 0.21534364415771418,
+    "substructure_attention_std": 0.3378480564420415,
+    "dominant_granularity": "substructure",
+    "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
+  },
+  "known_mechanism": {
+    "pair_name": "氨氯地平–辛伐他汀",
+    "clinical_effect": "他汀暴露升高",
+    "mechanism": "氨氯地平抑制CYP3A4介导的辛伐他汀代谢。",
+    "expected_groups": {
+      "DB00381": [
+        "酯",
+        "卤素",
+        "杂环"
+      ],
+      "DB00641": [
+        "醇羟基",
+        "酯"
+      ]
+    },
+    "expected_sites": {
+      "DB00381": "二氢吡啶酯",
+      "DB00641": "内酯侧链"
+    }
+  },
+  "head_mechanism_alignment": {
+    "expected_groups": [
+      "酯",
+      "卤素",
+      "杂环"
+    ],
+    "top_predicted_groups": [
+      "杂环",
+      "芳环(疏水)",
+      "酯"
+    ],
+    "top_predicted_groups_by_max": [
+      "芳环(疏水)",
+      "杂环",
+      "酯"
+    ],
+    "hit_groups": [
+      "酯",
+      "杂环"
+    ],
+    "miss_groups": [
+      "卤素"
+    ],
+    "extra_groups": [
+      "芳环(疏水)"
+    ],
+    "alignment_recall": 0.6666666666666666,
+    "expected_site": "二氢吡啶酯"
+  },
+  "tail_mechanism_alignment": {
+    "expected_groups": [
+      "醇羟基",
+      "酯"
+    ],
+    "top_predicted_groups": [
+      "醇羟基",
+      "杂环",
+      "酯"
+    ],
+    "top_predicted_groups_by_max": [
+      "醇羟基",
+      "酯",
+      "杂环"
+    ],
+    "hit_groups": [
+      "醇羟基",
+      "酯"
+    ],
+    "miss_groups": [],
+    "extra_groups": [
+      "杂环"
+    ],
+    "alignment_recall": 1.0,
+    "expected_site": "内酯侧链"
+  },
+  "pair_alignment_recall": 0.8333333333333333,
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。必须同时看两个方向的 logit；alignment_recall 不是预测准确率；请标明 train/val/test。",
+  "split": {
+    "forward_splits": [],
+    "reverse_splits": [
+      "test"
+    ],
+    "splits": [
+      "test"
+    ],
+    "in_test": true,
+    "in_train": false,
+    "in_val": false
+  },
+  "reverse_logit": 20.81239318847656
+}

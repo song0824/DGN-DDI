@@ -1,0 +1,205 @@
+{
+  "n_candidates": 22,
+  "selection_rule": "known mechanism; keep both directions; do not filter logit>0; always keep aspirin-warfarin",
+  "paper_figure_rule": "only use prediction_positive=True AND known mechanism; always show both directions for aspirin-warfarin",
+  "selected": [
+    {
+      "pair_name": "阿司匹林–华法林",
+      "in_test": false,
+      "directions": [
+        {
+          "case_name": "warfarin_aspirin",
+          "head": "DB00682",
+          "tail": "DB00945",
+          "relation": "5",
+          "logit": 23.183483123779297,
+          "reverse_logit": -23.054645538330078,
+          "probability": 0.9999999999145837,
+          "prediction_positive": true,
+          "reverse_prediction_positive": false,
+          "has_known_mechanism": true,
+          "pair_name": "阿司匹林–华法林",
+          "in_test": false,
+          "in_train": true,
+          "in_val": false,
+          "forward_splits": "train",
+          "reverse_splits": ""
+        },
+        {
+          "case_name": "aspirin_warfarin",
+          "head": "DB00945",
+          "tail": "DB00682",
+          "relation": "5",
+          "logit": -23.054643630981445,
+          "reverse_logit": 23.183483123779297,
+          "probability": 9.716178588677647e-11,
+          "prediction_positive": false,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "阿司匹林–华法林",
+          "in_test": false,
+          "in_train": true,
+          "in_val": false,
+          "forward_splits": "",
+          "reverse_splits": "train"
+        }
+      ]
+    },
+    {
+      "pair_name": "氨氯地平–辛伐他汀",
+      "in_test": true,
+      "directions": [
+        {
+          "case_name": "simvastatin_amlodipine",
+          "head": "DB00641",
+          "tail": "DB00381",
+          "relation": "72",
+          "logit": 20.812389373779297,
+          "reverse_logit": 14.173102378845215,
+          "probability": 0.9999999990852675,
+          "prediction_positive": true,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "氨氯地平–辛伐他汀",
+          "in_test": true,
+          "in_train": false,
+          "in_val": false,
+          "forward_splits": "test",
+          "reverse_splits": ""
+        },
+        {
+          "case_name": "amlodipine_simvastatin",
+          "head": "DB00381",
+          "tail": "DB00641",
+          "relation": "72",
+          "logit": 14.173105239868164,
+          "reverse_logit": 20.812393188476562,
+          "probability": 0.9999993006440097,
+          "prediction_positive": true,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "氨氯地平–辛伐他汀",
+          "in_test": true,
+          "in_train": false,
+          "in_val": false,
+          "forward_splits": "",
+          "reverse_splits": "test"
+        }
+      ]
+    },
+    {
+      "pair_name": "辛伐他汀–胺碘酮",
+      "in_test": true,
+      "directions": [
+        {
+          "case_name": "simvastatin_amiodarone",
+          "head": "DB00641",
+          "tail": "DB01118",
+          "relation": "46",
+          "logit": 13.514832496643066,
+          "reverse_logit": 4.025123119354248,
+          "probability": 0.9999986492274195,
+          "prediction_positive": true,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "辛伐他汀–胺碘酮",
+          "in_test": true,
+          "in_train": false,
+          "in_val": false,
+          "forward_splits": "test",
+          "reverse_splits": ""
+        },
+        {
+          "case_name": "amiodarone_simvastatin",
+          "head": "DB01118",
+          "tail": "DB00641",
+          "relation": "46",
+          "logit": 4.025121212005615,
+          "reverse_logit": 13.514827728271484,
+          "probability": 0.982452167360991,
+          "prediction_positive": true,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "辛伐他汀–胺碘酮",
+          "in_test": true,
+          "in_train": false,
+          "in_val": false,
+          "forward_splits": "",
+          "reverse_splits": "test"
+        }
+      ]
+    },
+    {
+      "pair_name": "对乙酰氨基酚–华法林",
+      "in_test": false,
+      "directions": [
+        {
+          "case_name": "acetaminophen_warfarin",
+          "head": "DB00316",
+          "tail": "DB00682",
+          "relation": "5",
+          "logit": -50.0,
+          "reverse_logit": 20.877384185791016,
+          "probability": 1.928749847963918e-22,
+          "prediction_positive": false,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "对乙酰氨基酚–华法林",
+          "in_test": false,
+          "in_train": true,
+          "in_val": false,
+          "forward_splits": "",
+          "reverse_splits": "train"
+        }
+      ]
+    },
+    {
+      "pair_name": "泮托拉唑–华法林",
+      "in_test": false,
+      "directions": [
+        {
+          "case_name": "pantoprazole_warfarin",
+          "head": "DB00213",
+          "tail": "DB00682",
+          "relation": "46",
+          "logit": -41.534423828125,
+          "reverse_logit": 11.448399543762207,
+          "probability": 9.158596429838833e-19,
+          "prediction_positive": false,
+          "reverse_prediction_positive": true,
+          "has_known_mechanism": true,
+          "pair_name": "泮托拉唑–华法林",
+          "in_test": false,
+          "in_train": true,
+          "in_val": false,
+          "forward_splits": "",
+          "reverse_splits": "train"
+        }
+      ]
+    },
+    {
+      "pair_name": "阿托伐他汀–华法林",
+      "in_test": false,
+      "directions": [
+        {
+          "case_name": "atorvastatin_warfarin",
+          "head": "DB01076",
+          "tail": "DB00682",
+          "relation": "5",
+          "logit": -34.21033477783203,
+          "reverse_logit": -0.22953343391418457,
+          "probability": 1.3888021556341259e-15,
+          "prediction_positive": false,
+          "reverse_prediction_positive": false,
+          "has_known_mechanism": true,
+          "pair_name": "阿托伐他汀–华法林",
+          "in_test": false,
+          "in_train": true,
+          "in_val": false,
+          "forward_splits": "",
+          "reverse_splits": "train"
+        }
+      ]
+    }
+  ]
+}

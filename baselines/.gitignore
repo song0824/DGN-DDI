@@ -1,0 +1,7 @@
+# Never add the upstream clone's nested git or generated folds.
+ssi_ddi/.git/
+ssi_ddi/data/
+ssi_ddi/__pycache__/
+ssi_ddi/*.pth
+ssi_ddi/*.log
+ssi_ddi_debug.err

@@ -3,8 +3,8 @@
   "head": "DB00945",
   "tail": "DB00682",
   "relation": "5",
-  "logit": -23.054641723632812,
-  "probability": 9.716197120835265e-11,
+  "logit": -23.054643630981445,
+  "probability": 9.716160056555375e-11,
   "prediction_positive": false,
   "block_weights": [
     0.3245887756347656,
@@ -12,14 +12,14 @@
     0.3716128170490265
   ],
   "head_top_atoms": [
-    0,
-    2,
     1,
+    12,
     5,
-    6,
     9,
-    3,
-    7
+    4,
+    6,
+    0,
+    3
   ],
   "tail_top_atoms": [
     18,
@@ -33,23 +33,10 @@
   ],
   "head_pharmacophores": [
     {
-      "functional_group": "酯",
-      "n_atoms": 5,
-      "mean_attention": 0.645549955898569,
-      "max_attention": 1.0,
-      "atom_indices": [
-        0,
-        1,
-        2,
-        3,
-        4
-      ]
-    },
-    {
       "functional_group": "芳环(疏水)",
       "n_atoms": 6,
-      "mean_attention": 0.4396825735185142,
-      "max_attention": 0.8521653127987804,
+      "mean_attention": 0.6932957139197966,
+      "max_attention": 0.9910210341920613,
       "atom_indices": [
         4,
         5,
@@ -60,10 +47,23 @@
       ]
     },
     {
+      "functional_group": "酯",
+      "n_atoms": 5,
+      "mean_attention": 0.6807352021093667,
+      "max_attention": 1.0,
+      "atom_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
       "functional_group": "羧酸(酸性中心)",
       "n_atoms": 3,
-      "mean_attention": 0.2889304449017641,
-      "max_attention": 0.3741003591188026,
+      "mean_attention": 0.4979178293196021,
+      "max_attention": 0.9913676786623761,
       "atom_indices": [
         10,
         11,
@@ -75,8 +75,8 @@
     {
       "functional_group": "酚羟基",
       "n_atoms": 2,
-      "mean_attention": 0.4268580675516236,
-      "max_attention": 0.8289454913976141,
+      "mean_attention": 0.42685811200984125,
+      "max_attention": 0.8289455626570181,
       "atom_indices": [
         12,
         13
@@ -85,8 +85,8 @@
     {
       "functional_group": "杂环",
       "n_atoms": 1,
-      "mean_attention": 0.254279826917103,
-      "max_attention": 0.254279826917103,
+      "mean_attention": 0.25427999048467514,
+      "max_attention": 0.25427999048467514,
       "atom_indices": [
         16
       ]
@@ -94,7 +94,7 @@
     {
       "functional_group": "香豆素内酯",
       "n_atoms": 12,
-      "mean_attention": 0.24569134599102405,
+      "mean_attention": 0.24569138021324002,
       "max_attention": 1.0,
       "atom_indices": [
         11,
@@ -114,8 +114,8 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 12,
-      "mean_attention": 0.09142412471627127,
-      "max_attention": 0.20251043962337195,
+      "mean_attention": 0.09142413767582709,
+      "max_attention": 0.20251045677444768,
       "atom_indices": [
         5,
         6,
@@ -134,8 +134,8 @@
     {
       "functional_group": "酮",
       "n_atoms": 4,
-      "mean_attention": 0.06630082656614926,
-      "max_attention": 0.26300859036208785,
+      "mean_attention": 0.06630084805234196,
+      "max_attention": 0.26300867467079253,
       "atom_indices": [
         0,
         1,
@@ -145,14 +145,14 @@
     }
   ],
   "head_granularity": {
-    "atom_attention_std": 0.3224402855650655,
-    "substructure_attention_std": 0.37714259679473755,
+    "atom_attention_std": 0.2768855480299795,
+    "substructure_attention_std": 0.4106453576193724,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
   "tail_granularity": {
-    "atom_attention_std": 0.24911534100386307,
-    "substructure_attention_std": 0.4471889282708717,
+    "atom_attention_std": 0.24911534986668807,
+    "substructure_attention_std": 0.4471889127299273,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
@@ -184,14 +184,14 @@
       "芳环(疏水)"
     ],
     "top_predicted_groups": [
-      "酯",
       "芳环(疏水)",
+      "酯",
       "羧酸(酸性中心)"
     ],
     "top_predicted_groups_by_max": [
       "酯",
-      "芳环(疏水)",
-      "羧酸(酸性中心)"
+      "羧酸(酸性中心)",
+      "芳环(疏水)"
     ],
     "hit_groups": [
       "羧酸(酸性中心)",
@@ -233,5 +233,18 @@
     "expected_site": "4-羟基香豆素核 / 内酯羰基（抗凝活性相关）"
   },
   "pair_alignment_recall": 0.8333333333333333,
-  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。必须同时看两个方向的 logit；alignment_recall 不是预测准确率；请标明 train/val/test。",
+  "split": {
+    "forward_splits": [],
+    "reverse_splits": [
+      "train"
+    ],
+    "splits": [
+      "train"
+    ],
+    "in_test": false,
+    "in_train": true,
+    "in_val": false
+  },
+  "reverse_logit": 23.183483123779297
 }

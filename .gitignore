@@ -51,3 +51,14 @@ venv/
 *.tar
 *.gz
 *.7z
+
+# Nested SSI-DDI clone / generated data — do not `git add baselines/` or `git add .`
+# Only the local readout/train patches are tracked.
+baselines/ssi_ddi/*
+!baselines/ssi_ddi/models.py
+!baselines/ssi_ddi/train_eval_fold0.py
+baselines/ssi_ddi_debug.err
+
+# Interpretability heatmaps are generated artifacts; keep code and JSON separate
+# (already-tracked PNGs stay; new ones should not be bulk-added)
+drugbank_test/interpret_results/**/*.png

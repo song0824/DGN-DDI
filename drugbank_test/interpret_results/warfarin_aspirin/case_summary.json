@@ -3,8 +3,8 @@
   "head": "DB00682",
   "tail": "DB00945",
   "relation": "5",
-  "logit": 23.183481216430664,
-  "probability": 0.9999999999145834,
+  "logit": 23.183483123779297,
+  "probability": 0.9999999999145839,
   "prediction_positive": true,
   "block_weights": [
     0.3245887756347656,
@@ -24,19 +24,19 @@
   "tail_top_atoms": [
     6,
     0,
-    7,
     2,
     5,
-    11,
+    1,
+    9,
     3,
-    1
+    12
   ],
   "head_pharmacophores": [
     {
       "functional_group": "酚羟基",
       "n_atoms": 2,
-      "mean_attention": 0.42685801439794835,
-      "max_attention": 0.8289454019027236,
+      "mean_attention": 0.4268581292755303,
+      "max_attention": 0.8289456166080817,
       "atom_indices": [
         12,
         13
@@ -45,8 +45,8 @@
     {
       "functional_group": "杂环",
       "n_atoms": 1,
-      "mean_attention": 0.2542796920422802,
-      "max_attention": 0.2542796920422802,
+      "mean_attention": 0.25427998985435935,
+      "max_attention": 0.25427998985435935,
       "atom_indices": [
         16
       ]
@@ -54,7 +54,7 @@
     {
       "functional_group": "香豆素内酯",
       "n_atoms": 12,
-      "mean_attention": 0.24569131926006726,
+      "mean_attention": 0.2456913663335013,
       "max_attention": 1.0,
       "atom_indices": [
         11,
@@ -74,8 +74,8 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 12,
-      "mean_attention": 0.09142411512856864,
-      "max_attention": 0.20251058088512075,
+      "mean_attention": 0.09142414641685874,
+      "max_attention": 0.20251022619387637,
       "atom_indices": [
         5,
         6,
@@ -94,8 +94,8 @@
     {
       "functional_group": "酮",
       "n_atoms": 4,
-      "mean_attention": 0.06630082757376433,
-      "max_attention": 0.2630085897722778,
+      "mean_attention": 0.06630084821403787,
+      "max_attention": 0.26300867404785466,
       "atom_indices": [
         0,
         1,
@@ -108,8 +108,8 @@
     {
       "functional_group": "酯",
       "n_atoms": 5,
-      "mean_attention": 0.6144581741601353,
-      "max_attention": 0.9850650966426473,
+      "mean_attention": 0.6741775040017999,
+      "max_attention": 0.9873784870837053,
       "atom_indices": [
         0,
         1,
@@ -121,7 +121,7 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 6,
-      "mean_attention": 0.6104107670114808,
+      "mean_attention": 0.4922678665751637,
       "max_attention": 1.0,
       "atom_indices": [
         4,
@@ -135,8 +135,8 @@
     {
       "functional_group": "羧酸(酸性中心)",
       "n_atoms": 3,
-      "mean_attention": 0.4950277555597215,
-      "max_attention": 0.8304917159949152,
+      "mean_attention": 0.2162681536907388,
+      "max_attention": 0.42867369156648394,
       "atom_indices": [
         10,
         11,
@@ -145,14 +145,14 @@
     }
   ],
   "head_granularity": {
-    "atom_attention_std": 0.2491153321918263,
-    "substructure_attention_std": 0.4471889228283536,
+    "atom_attention_std": 0.24911535800854331,
+    "substructure_attention_std": 0.44718895460353375,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
   "tail_granularity": {
-    "atom_attention_std": 0.28828450880977813,
-    "substructure_attention_std": 0.3578394937002156,
+    "atom_attention_std": 0.34105063205878927,
+    "substructure_attention_std": 0.35484159419771,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
@@ -233,5 +233,18 @@
     "expected_site": "羧基与乙酰酯（抗血小板活性相关）"
   },
   "pair_alignment_recall": 0.8333333333333333,
-  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。必须同时看两个方向的 logit；alignment_recall 不是预测准确率；请标明 train/val/test。",
+  "split": {
+    "forward_splits": [
+      "train"
+    ],
+    "reverse_splits": [],
+    "splits": [
+      "train"
+    ],
+    "in_test": false,
+    "in_train": true,
+    "in_val": false
+  },
+  "reverse_logit": -23.05464553833008
 }

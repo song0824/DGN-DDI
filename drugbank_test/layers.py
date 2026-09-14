@@ -287,7 +287,11 @@ class InterGraphAttention(nn.Module):
 
 
 class IntraGraphAttention(nn.Module):
-    """增强的图内注意力，支持多头注意力和残差连接"""
+    """图内节点门控注意力（不是 pairwise Transformer）。
+
+    对每个节点算 q·k 标量，再在同一分子内 softmax，用来定位药效团相关原子。
+    口头/书面请称“图内节点门控”，不要写成 pairwise 自注意力。
+    """
 
     def __init__(self, in_dim: int, heads: int = 4, dropout: float = 0.2):
         super().__init__()
@@ -337,7 +341,7 @@ class IntraGraphAttention(nn.Module):
             qkv = qkv.view(x.size(0), 3, self.heads, self.dim_per_head)  # [num_nodes, 3, heads, dim_per_head]
             q, k, v = qkv[:, 0], qkv[:, 1], qkv[:, 2]  # 每个都是 [num_nodes, heads, dim_per_head]
 
-            # 计算注意力分数
+            # 逐节点门控分数（q·k），不是节点两两之间的注意力矩阵
             attn_scores = (q * k).sum(dim=-1) * self.scale  # [num_nodes, heads]
 
             # 处理不同batch的情况
@@ -567,9 +571,11 @@ def substructure_to_atom_aggregation(atom_num: int, sub_feats: torch.Tensor,
 
 
 class DualGranularityFusion(nn.Module):
-    """
-    双粒度特征融合模块，整合原子级和子结构级特征
-    实现research paper中的双粒度融合机制
+    """双粒度特征融合。
+
+    推理消融（不改权重）：
+    - no_fusion / atom_only：同一路径，关掉门控融合，直接返回原子特征
+    - substruct_only：原子支路置零后仍走完整 output_proj + 原子残差
     """
 
     def __init__(self, atom_dim: int, sub_dim: int, hidden_dim: int,
@@ -620,6 +626,7 @@ class DualGranularityFusion(nn.Module):
 
         # 归一化
         self.norm = RobustLayerNorm(atom_dim)
+        self.residual_dropout = dropout
         self.ablation_mode = None
 
     def forward(self, atom_feats: torch.Tensor, sub_feats: torch.Tensor,
@@ -633,7 +640,9 @@ class DualGranularityFusion(nn.Module):
             sub_nodes: 子结构到原子的映射关系
         """
         try:
-            if getattr(self, "ablation_mode", None) in ("no_fusion", "atom_only"):
+            mode = getattr(self, "ablation_mode", None)
+            # no_fusion 与 atom_only 同一张量路径，只保留一个科学口径。
+            if mode in ("no_fusion", "atom_only"):
                 return atom_feats
 
             # 聚合子结构特征到原子级别
@@ -642,6 +651,9 @@ class DualGranularityFusion(nn.Module):
             # 特征投影
             atom_trans = self.atom_proj(atom_feats)  # [num_atoms, hidden_dim]
             sub_trans = self.sub_proj(agg_sub)  # [num_atoms, hidden_dim]
+            if mode == "substruct_only":
+                # 融合增量只来自子结构，但保留训练时的原子残差底座。
+                atom_trans = torch.zeros_like(atom_trans)
 
             # 双粒度特征融合
             if self.fusion_type == 'gated':
@@ -672,7 +684,9 @@ class DualGranularityFusion(nn.Module):
             output = self.output_proj(fused)
 
             # 残差连接和归一化
-            final_output = self.norm(atom_feats + F.dropout(output, p=0.2, training=self.training))
+            final_output = self.norm(
+                atom_feats + F.dropout(output, p=self.residual_dropout, training=self.training)
+            )
 
             return final_output
 

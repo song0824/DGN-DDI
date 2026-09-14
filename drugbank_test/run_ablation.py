@@ -1,6 +1,7 @@
-"""推理消融：Full / w/o Fusion / w/o Inter / Atom-only。
+"""推理消融：Full / w/o Fusion(=atom_only) / w/o Inter / substruct_only。
 
 不改权重、不重训。结果写入 test_results/ablation_<mode>/ ，并汇总 comparison.csv。
+atom_only 与 no_fusion 同一路径，默认只跑 no_fusion。
 """
 import argparse
 import json
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODES = ("full", "no_fusion", "no_inter", "atom_only")
+MODES = ("full", "no_fusion", "no_inter", "substruct_only")
 
 
 def main():

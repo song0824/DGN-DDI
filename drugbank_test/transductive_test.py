@@ -182,6 +182,10 @@ class DDITester:
             raise FileNotFoundError(f"Model checkpoint {model_path} not found")
         checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
         self.config = _merge_eval_config_from_checkpoint(self.config, checkpoint)
+        overridden = self.config.get("_neg_ent_overridden")
+        if overridden is not None:
+            self.config["neg_ent"] = int(overridden)
+            logger.info("neg_ent overridden after checkpoint merge: %s", overridden)
         return checkpoint
 
     def load_test_data(self):
@@ -369,6 +373,9 @@ class DDITester:
         test_metrics['avg_batch_time'] = np.mean(batch_times) if batch_times else 0
         test_metrics['total_samples'] = len(all_labels)
         test_metrics['total_inference_time'] = time.time() - start_time
+        test_metrics['neg_ent'] = int(self.config.get('neg_ent', 3))
+        test_metrics['aupr_definition'] = 'average_precision_score'
+        test_metrics['ablation_mode'] = str(self.config.get('ablation_mode') or 'full')
 
         self.test_results = test_metrics
         self.per_relation_results = self._per_relation_metrics()
@@ -669,10 +676,16 @@ def main():
     parser.add_argument('--threshold', type=float, help='Override prediction threshold')
     parser.add_argument('--results-dir', type=str, help='Override results directory')
     parser.add_argument(
+        '--neg-ent',
+        type=int,
+        default=None,
+        help='Override negatives per positive after checkpoint merge (e.g. 1 for appendix)',
+    )
+    parser.add_argument(
         '--ablation',
-        choices=['full', 'no_fusion', 'no_inter', 'atom_only'],
+        choices=['full', 'no_fusion', 'no_inter', 'atom_only', 'substruct_only'],
         default='full',
-        help='Inference-time ablation; does not change checkpoint weights',
+        help='Inference-time ablation; atom_only is an alias of no_fusion',
     )
 
     args = parser.parse_args()
@@ -701,6 +714,9 @@ def main():
         config["_threshold_overridden"] = True
     if args.results_dir:
         config['results_dir'] = args.results_dir
+    if args.neg_ent is not None:
+        config['neg_ent'] = int(args.neg_ent)
+        config['_neg_ent_overridden'] = int(args.neg_ent)
     config['ablation_mode'] = args.ablation
 
     # 创建结果保存目录

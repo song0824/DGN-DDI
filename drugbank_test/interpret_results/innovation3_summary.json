@@ -1,13 +1,16 @@
 {
-  "n_cases": 6,
-  "n_with_known_mechanism": 6,
+  "n_cases": 9,
+  "n_with_known_mechanism": 9,
   "mean_alignment_recall": 0.8888888888888888,
   "howto_write_thesis": [
     "用 IntraGraph 热力图写“药物内部核心药效团”",
     "用 InterGraph 热力图写“两药接触关键位点”",
     "用 mechanism_alignment.csv 写“注意力基团 vs 已知机制”对照表",
     "alignment_recall 只说明基团对上了，不代表该方向预测为正样本",
+    "每个案例必须同时看两个方向的 logit，禁止只挑 logit>0",
     "阿司匹林–华法林请同时看 aspirin_warfarin 与 warfarin_aspirin 两个方向",
+    "论文插图只用 prediction_positive=True 且机制已知的对，并标明 train/val/test",
+    "阿司匹林–华法林在 train，不是 held-out test",
     "论文插图请用英文标签的 PNG（已避免中文字体缺字）"
   ]
 }

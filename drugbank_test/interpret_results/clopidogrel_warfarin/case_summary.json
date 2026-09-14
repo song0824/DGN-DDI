@@ -3,8 +3,8 @@
   "head": "DB00758",
   "tail": "DB00682",
   "relation": "5",
-  "logit": -0.8686351180076599,
-  "probability": 0.29553838489773043,
+  "logit": -0.8686363101005554,
+  "probability": 0.2955384717636479,
   "prediction_positive": false,
   "block_weights": [
     0.3245887756347656,
@@ -12,14 +12,14 @@
     0.3716128170490265
   ],
   "head_top_atoms": [
-    8,
     9,
-    17,
-    5,
+    8,
+    20,
+    6,
     2,
     1,
-    14,
-    3
+    11,
+    10
   ],
   "tail_top_atoms": [
     18,
@@ -35,18 +35,40 @@
     {
       "functional_group": "杂环",
       "n_atoms": 2,
-      "mean_attention": 0.7089744313209285,
-      "max_attention": 0.8123713856641822,
+      "mean_attention": 0.6996382609586543,
+      "max_attention": 1.0,
       "atom_indices": [
         1,
         9
       ]
     },
     {
+      "functional_group": "卤素",
+      "n_atoms": 1,
+      "mean_attention": 0.6633466420654629,
+      "max_attention": 0.6633466420654629,
+      "atom_indices": [
+        20
+      ]
+    },
+    {
+      "functional_group": "酯",
+      "n_atoms": 5,
+      "mean_attention": 0.2859619785161912,
+      "max_attention": 0.39671142583260516,
+      "atom_indices": [
+        0,
+        10,
+        11,
+        12,
+        13
+      ]
+    },
+    {
       "functional_group": "芳环(疏水)",
       "n_atoms": 6,
-      "mean_attention": 0.3621442227538527,
-      "max_attention": 0.6755014957290315,
+      "mean_attention": 0.1582785772813182,
+      "max_attention": 0.2705018263643606,
       "atom_indices": [
         14,
         15,
@@ -55,36 +77,14 @@
         18,
         19
       ]
-    },
-    {
-      "functional_group": "卤素",
-      "n_atoms": 1,
-      "mean_attention": 0.27231603430618023,
-      "max_attention": 0.27231603430618023,
-      "atom_indices": [
-        20
-      ]
-    },
-    {
-      "functional_group": "酯",
-      "n_atoms": 5,
-      "mean_attention": 0.21111787451489955,
-      "max_attention": 0.40298645313584514,
-      "atom_indices": [
-        0,
-        10,
-        11,
-        12,
-        13
-      ]
     }
   ],
   "tail_pharmacophores": [
     {
       "functional_group": "酚羟基",
       "n_atoms": 2,
-      "mean_attention": 0.5074272509389599,
-      "max_attention": 0.9713142825278742,
+      "mean_attention": 0.5074273902292891,
+      "max_attention": 0.9713145731684112,
       "atom_indices": [
         12,
         13
@@ -93,8 +93,8 @@
     {
       "functional_group": "杂环",
       "n_atoms": 1,
-      "mean_attention": 0.3690220783515588,
-      "max_attention": 0.3690220783515588,
+      "mean_attention": 0.36902222559083175,
+      "max_attention": 0.36902222559083175,
       "atom_indices": [
         16
       ]
@@ -102,7 +102,7 @@
     {
       "functional_group": "香豆素内酯",
       "n_atoms": 12,
-      "mean_attention": 0.2675991392741817,
+      "mean_attention": 0.2675992053502538,
       "max_attention": 1.0,
       "atom_indices": [
         11,
@@ -122,8 +122,8 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 12,
-      "mean_attention": 0.0909787516975397,
-      "max_attention": 0.21164733867472135,
+      "mean_attention": 0.09097878315837964,
+      "max_attention": 0.21164746331776657,
       "atom_indices": [
         5,
         6,
@@ -142,8 +142,8 @@
     {
       "functional_group": "酮",
       "n_atoms": 4,
-      "mean_attention": 0.0731935614703858,
-      "max_attention": 0.2892442864315979,
+      "mean_attention": 0.07319357968157053,
+      "max_attention": 0.2892443551822975,
       "atom_indices": [
         0,
         1,
@@ -153,14 +153,14 @@
     }
   ],
   "head_granularity": {
-    "atom_attention_std": 0.2628555984542126,
-    "substructure_attention_std": 0.36104285951014053,
+    "atom_attention_std": 0.2747009711409488,
+    "substructure_attention_std": 0.37762811690953746,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
   "tail_granularity": {
-    "atom_attention_std": 0.26726144395666124,
-    "substructure_attention_std": 0.44015124854126647,
+    "atom_attention_std": 0.2672614822588893,
+    "substructure_attention_std": 0.44015125884483497,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
@@ -192,12 +192,12 @@
     ],
     "top_predicted_groups": [
       "杂环",
-      "芳环(疏水)",
-      "卤素"
+      "卤素",
+      "酯"
     ],
     "top_predicted_groups_by_max": [
       "杂环",
-      "芳环(疏水)",
+      "卤素",
       "酯"
     ],
     "hit_groups": [
@@ -206,9 +206,7 @@
       "杂环"
     ],
     "miss_groups": [],
-    "extra_groups": [
-      "芳环(疏水)"
-    ],
+    "extra_groups": [],
     "alignment_recall": 1.0,
     "expected_site": "噻吩并吡啶杂环与甲酯"
   },
@@ -239,5 +237,18 @@
     "expected_site": "4-羟基香豆素核"
   },
   "pair_alignment_recall": 1.0,
-  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。必须同时看两个方向的 logit；alignment_recall 不是预测准确率；请标明 train/val/test。",
+  "split": {
+    "forward_splits": [],
+    "reverse_splits": [
+      "train"
+    ],
+    "splits": [
+      "train"
+    ],
+    "in_test": false,
+    "in_train": true,
+    "in_val": false
+  },
+  "reverse_logit": 20.327238082885746
 }

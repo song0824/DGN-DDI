@@ -67,6 +67,12 @@ DEFAULT_CASES = [
     ("DB01076", "DB00682", "atorvastatin_warfarin"),
     ("DB00213", "DB00682", "pantoprazole_warfarin"),
     ("DB00999", "DB00682", "hydrochlorothiazide_warfarin"),
+    ("DB00682", "DB00338", "warfarin_omeprazole"),
+    ("DB00338", "DB00682", "omeprazole_warfarin"),
+    ("DB00381", "DB00641", "amlodipine_simvastatin"),
+    ("DB00641", "DB00381", "simvastatin_amlodipine"),
+    ("DB00641", "DB01118", "simvastatin_amiodarone"),
+    ("DB01118", "DB00641", "amiodarone_simvastatin"),
 ]
 
 # 开题创新点3：酸性中心 / 疏水环 / 杂环等药效团，避免把酯/羧酸误标成 Ketone。
@@ -174,6 +180,97 @@ KNOWN_MECHANISMS = {
         "expected_sites": {
             "DB00213": "苯并咪唑与吡啶",
             "DB00682": "4-羟基香豆素核",
+        },
+    },
+    frozenset({"DB01118", "DB00682"}): {
+        "pair_name": "胺碘酮–华法林",
+        "clinical_effect": "抗凝增强、INR升高",
+        "mechanism": "胺碘酮抑制CYP2C9等，减少S-华法林清除；华法林仍作用于VKOR。",
+        "expected_groups": {
+            "DB01118": ["卤素", "酮", "芳环(疏水)"],
+            "DB00682": ["香豆素内酯", "酚羟基"],
+        },
+        "expected_sites": {
+            "DB01118": "碘代苯甲醚与酮",
+            "DB00682": "4-羟基香豆素核",
+        },
+    },
+    frozenset({"DB00472", "DB00682"}): {
+        "pair_name": "氟西汀–华法林",
+        "clinical_effect": "可能增强抗凝",
+        "mechanism": "氟西汀抑制CYP2C9/CYP2D6，可能升高华法林浓度。",
+        "expected_groups": {
+            "DB00472": ["芳环(疏水)", "卤素"],
+            "DB00682": ["香豆素内酯", "酚羟基"],
+        },
+        "expected_sites": {
+            "DB00472": "三氟甲基苯氧侧链",
+            "DB00682": "4-羟基香豆素核",
+        },
+    },
+    frozenset({"DB00338", "DB00682"}): {
+        "pair_name": "奥美拉唑–华法林",
+        "clinical_effect": "PPI可能轻度影响华法林代谢",
+        "mechanism": "奥美拉唑经CYP2C19代谢，可能改变S-华法林代谢。",
+        "expected_groups": {
+            "DB00338": ["杂环", "芳环(疏水)"],
+            "DB00682": ["香豆素内酯", "酚羟基"],
+        },
+        "expected_sites": {
+            "DB00338": "苯并咪唑与吡啶",
+            "DB00682": "4-羟基香豆素核",
+        },
+    },
+    frozenset({"DB00537", "DB00682"}): {
+        "pair_name": "环丙沙星–华法林",
+        "clinical_effect": "抗凝增强",
+        "mechanism": "喹诺酮可能抑制华法林代谢或改变肠道菌群维生素K。",
+        "expected_groups": {
+            "DB00537": ["卤素", "杂环", "羧酸(酸性中心)"],
+            "DB00682": ["香豆素内酯", "酚羟基"],
+        },
+        "expected_sites": {
+            "DB00537": "氟喹诺酮核与羧酸",
+            "DB00682": "4-羟基香豆素核",
+        },
+    },
+    frozenset({"DB00641", "DB00682"}): {
+        "pair_name": "辛伐他汀–华法林",
+        "clinical_effect": "可能升高抗凝强度",
+        "mechanism": "竞争CYP3A4/蛋白结合；华法林药效团仍是香豆素核。",
+        "expected_groups": {
+            "DB00641": ["醇羟基", "酯"],
+            "DB00682": ["香豆素内酯", "酚羟基"],
+        },
+        "expected_sites": {
+            "DB00641": "内酯/开环酸侧链",
+            "DB00682": "4-羟基香豆素核",
+        },
+    },
+    frozenset({"DB00641", "DB01118"}): {
+        "pair_name": "辛伐他汀–胺碘酮",
+        "clinical_effect": "他汀暴露升高、肌病风险",
+        "mechanism": "胺碘酮抑制CYP3A4，减少辛伐他汀代谢。",
+        "expected_groups": {
+            "DB00641": ["醇羟基", "酯"],
+            "DB01118": ["卤素", "酮", "芳环(疏水)"],
+        },
+        "expected_sites": {
+            "DB00641": "内酯侧链",
+            "DB01118": "碘代芳酮",
+        },
+    },
+    frozenset({"DB00381", "DB00641"}): {
+        "pair_name": "氨氯地平–辛伐他汀",
+        "clinical_effect": "他汀暴露升高",
+        "mechanism": "氨氯地平抑制CYP3A4介导的辛伐他汀代谢。",
+        "expected_groups": {
+            "DB00381": ["酯", "卤素", "杂环"],
+            "DB00641": ["醇羟基", "酯"],
+        },
+        "expected_sites": {
+            "DB00381": "二氢吡啶酯",
+            "DB00641": "内酯侧链",
         },
     },
 }
@@ -391,10 +488,39 @@ def _find_pair_relation(csvs: List[str], h: str, t: str) -> Optional[object]:
         if not os.path.exists(path):
             continue
         df = pd.read_csv(path)
-        hit = df[((df["d1"] == h) & (df["d2"] == t)) | ((df["d1"] == t) & (df["d2"] == h))]
-        if len(hit):
-            return hit.iloc[0]["type"]
+        exact = df[(df["d1"] == h) & (df["d2"] == t)]
+        if len(exact):
+            return exact.iloc[0]["type"]
+        rev = df[(df["d1"] == t) & (df["d2"] == h)]
+        if len(rev):
+            return rev.iloc[0]["type"]
     return None
+
+
+def _pair_split_membership(csvs: List[str], h: str, t: str) -> Dict[str, object]:
+    """标出 (h,t) / (t,h) 分别落在 train/val/test 的哪些划分。"""
+    names = []
+    for path in csvs:
+        base = os.path.basename(path).replace(".csv", "")
+        names.append((base, path))
+    hits = {"forward": [], "reverse": []}
+    for split_name, path in names:
+        if not os.path.exists(path):
+            continue
+        df = pd.read_csv(path, usecols=["d1", "d2"])
+        if ((df["d1"] == h) & (df["d2"] == t)).any():
+            hits["forward"].append(split_name)
+        if ((df["d1"] == t) & (df["d2"] == h)).any():
+            hits["reverse"].append(split_name)
+    all_splits = sorted(set(hits["forward"] + hits["reverse"]))
+    return {
+        "forward_splits": hits["forward"],
+        "reverse_splits": hits["reverse"],
+        "splits": all_splits,
+        "in_test": "test" in all_splits,
+        "in_train": "train" in all_splits,
+        "in_val": "val" in all_splits,
+    }
 
 
 def _pick_fallback_cases(csvs: List[str], n: int = 6) -> List[Tuple[str, str, str]]:
@@ -433,6 +559,20 @@ def _build_model(config, ddi_loader, device):
     return model, config, ckpt
 
 
+def _score_logit(dataset: DrugDataset, model: DGN_DDI, device: torch.device, h: str, t: str, rel):
+    packed = dataset.collate_positives_only([(h, t, rel)])
+    if packed is None or packed[0] is None:
+        return None
+    pos_h, pos_t, pos_r, pos_bg = packed
+    pos_h = pos_h.to(device)
+    pos_t = pos_t.to(device)
+    pos_r = pos_r.to(device)
+    pos_bg = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in pos_bg.items()}
+    with torch.no_grad():
+        scores = model(pos_h, pos_t, pos_r, pos_bg)
+    return float(scores[0].item())
+
+
 def explain_pair(
     dataset: DrugDataset,
     model: DGN_DDI,
@@ -443,6 +583,7 @@ def explain_pair(
     smiles_map: Dict[str, str],
     out_dir: str,
     case_name: str,
+    csvs: Optional[List[str]] = None,
 ) -> Optional[Dict]:
     packed = dataset.collate_positives_only([(h, t, rel)])
     if packed is None or packed[0] is None:
@@ -514,14 +655,18 @@ def explain_pair(
 
     block_w = _to_numpy(explain.get("block_weights"))
     recalls = [x for x in (h_align.get("alignment_recall"), t_align.get("alignment_recall")) if x is not None]
+    split_info = _pair_split_membership(csvs or [], h, t) if csvs else {}
+    reverse_logit = _score_logit(dataset, model, device, t, h, rel)
     record = {
         "case_name": case_name,
         "head": h,
         "tail": t,
         "relation": str(rel),
         "logit": score,
+        "reverse_logit": reverse_logit,
         "probability": prob,
         "prediction_positive": bool(score > 0),
+        "split": split_info,
         "block_weights": [float(x) for x in block_w.reshape(-1)] if block_w is not None else [],
         "head_top_atoms": np.argsort(-h_atom)[:8].tolist() if h_atom.size else [],
         "tail_top_atoms": np.argsort(-t_atom)[:8].tolist() if t_atom.size else [],
@@ -537,7 +682,8 @@ def explain_pair(
             "IntraGraph 对应开题“药物内部核心药效团”；"
             "InterGraph 对应“两药接触关键位点”。"
             "alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。"
-            "logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+            "logit 方向随 (head,tail) 有向关系变化，必须同时报两个方向。"
+            "论文插图只用 prediction_positive=True 且机制已知的对；阿司匹林–华法林两个方向都要展示。"
         ),
     }
     with open(os.path.join(case_dir, "case_summary.json"), "w", encoding="utf-8") as f:
@@ -635,7 +781,7 @@ def main():
     summaries = []
     for idx, (h, t, name, rel) in enumerate(unique_cases, start=1):
         print(f"[DGN-DDI] ({idx}/{len(unique_cases)}) 解释 {h} - {t} ({name}) ...", flush=True)
-        rec = explain_pair(dataset, model, device, h, t, rel, smiles_map, args.out_dir, name)
+        rec = explain_pair(dataset, model, device, h, t, rel, smiles_map, args.out_dir, name, csvs=csvs)
         if rec:
             summaries.append(rec)
 
@@ -652,7 +798,11 @@ def main():
             "head": rec.get("head"),
             "tail": rec.get("tail"),
             "logit": rec.get("logit"),
+            "reverse_logit": rec.get("reverse_logit"),
             "prediction_positive": rec.get("prediction_positive"),
+            "in_test": (rec.get("split") or {}).get("in_test"),
+            "in_train": (rec.get("split") or {}).get("in_train"),
+            "splits": "|".join((rec.get("split") or {}).get("splits") or []),
             "clinical_effect": mech.get("clinical_effect", ""),
             "mechanism": mech.get("mechanism", ""),
             "head_top_groups": "|".join(rec.get("head_mechanism_alignment", {}).get("top_predicted_groups", [])),
@@ -680,7 +830,9 @@ def main():
                 "用 InterGraph 热力图写“两药接触关键位点”",
                 "用 mechanism_alignment.csv 写“注意力基团 vs 已知机制”对照表",
                 "alignment_recall 只说明基团对上了，不代表该方向预测为正样本",
+                "每个案例必须同时看两个方向的 logit，禁止只挑 logit>0",
                 "阿司匹林–华法林请同时看 aspirin_warfarin 与 warfarin_aspirin 两个方向",
+                "论文插图只用 prediction_positive=True 且机制已知的对，并标明 train/val/test",
                 "论文插图请用英文标签的 PNG（已避免中文字体缺字）",
             ],
         }, f, ensure_ascii=False, indent=2)

@@ -4,7 +4,7 @@
   "tail": "DB00682",
   "relation": "46",
   "logit": -41.534423828125,
-  "probability": 9.158596429838833e-19,
+  "probability": 9.158631367178229e-19,
   "prediction_positive": false,
   "block_weights": [
     0.3245887756347656,
@@ -35,8 +35,8 @@
     {
       "functional_group": "卤素",
       "n_atoms": 2,
-      "mean_attention": 0.7838877062899066,
-      "max_attention": 0.7838877062899066,
+      "mean_attention": 0.7838873380569891,
+      "max_attention": 0.7838873380569891,
       "atom_indices": [
         19,
         20
@@ -45,8 +45,8 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 6,
-      "mean_attention": 0.29631992224416787,
-      "max_attention": 0.8305561473750434,
+      "mean_attention": 0.2963198468210251,
+      "max_attention": 0.8305560447356903,
       "atom_indices": [
         12,
         13,
@@ -59,8 +59,8 @@
     {
       "functional_group": "杂环",
       "n_atoms": 3,
-      "mean_attention": 0.16619802435102815,
-      "max_attention": 0.45818563700147197,
+      "mean_attention": 0.16619806958803363,
+      "max_attention": 0.4581857832367014,
       "atom_indices": [
         11,
         14,
@@ -72,8 +72,8 @@
     {
       "functional_group": "酚羟基",
       "n_atoms": 2,
-      "mean_attention": 0.4971482784960964,
-      "max_attention": 0.9660780116864032,
+      "mean_attention": 0.49714838450688736,
+      "max_attention": 0.9660782423991354,
       "atom_indices": [
         12,
         13
@@ -82,8 +82,8 @@
     {
       "functional_group": "杂环",
       "n_atoms": 1,
-      "mean_attention": 0.3413915274062656,
-      "max_attention": 0.3413915274062656,
+      "mean_attention": 0.3413915674674288,
+      "max_attention": 0.3413915674674288,
       "atom_indices": [
         16
       ]
@@ -91,7 +91,7 @@
     {
       "functional_group": "香豆素内酯",
       "n_atoms": 12,
-      "mean_attention": 0.25715473162166796,
+      "mean_attention": 0.2571547624091033,
       "max_attention": 1.0,
       "atom_indices": [
         11,
@@ -111,8 +111,8 @@
     {
       "functional_group": "芳环(疏水)",
       "n_atoms": 12,
-      "mean_attention": 0.09204976396860842,
-      "max_attention": 0.18393720456676876,
+      "mean_attention": 0.09204975643492376,
+      "max_attention": 0.1839372554878601,
       "atom_indices": [
         5,
         6,
@@ -131,8 +131,8 @@
     {
       "functional_group": "酮",
       "n_atoms": 4,
-      "mean_attention": 0.07279218942331972,
-      "max_attention": 0.28528421256290293,
+      "mean_attention": 0.07279219842362714,
+      "max_attention": 0.285284246040059,
       "atom_indices": [
         0,
         1,
@@ -142,14 +142,14 @@
     }
   ],
   "head_granularity": {
-    "atom_attention_std": 0.3449817640823057,
-    "substructure_attention_std": 0.3553455588736212,
+    "atom_attention_std": 0.34498170127324396,
+    "substructure_attention_std": 0.3553455589388543,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
   "tail_granularity": {
-    "atom_attention_std": 0.2649665396476292,
-    "substructure_attention_std": 0.44670072631120894,
+    "atom_attention_std": 0.26496657259067286,
+    "substructure_attention_std": 0.4467006629139988,
     "dominant_granularity": "substructure",
     "note": "标准差更大表示该粒度上的注意力更集中，用于开题的跨粒度差异分析。"
   },
@@ -225,5 +225,18 @@
     "expected_site": "4-羟基香豆素核"
   },
   "pair_alignment_recall": 1.0,
-  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。"
+  "note": "IntraGraph 对应开题“药物内部核心药效团”；InterGraph 对应“两药接触关键位点”。alignment_recall 是已知机制基团出现在注意力 Top-3 的比例，不是预测准确率。logit 方向随 (head,tail) 有向关系变化，反向案例需分开解读。必须同时看两个方向的 logit；alignment_recall 不是预测准确率；请标明 train/val/test。",
+  "split": {
+    "forward_splits": [],
+    "reverse_splits": [
+      "train"
+    ],
+    "splits": [
+      "train"
+    ],
+    "in_test": false,
+    "in_train": true,
+    "in_val": false
+  },
+  "reverse_logit": 11.448399543762209
 }
