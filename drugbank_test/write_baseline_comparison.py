@@ -1,7 +1,7 @@
-"""汇总 DGN-DDI 主结果 / 消融 / SSI-DDI-like fold0 对照表。
+"""汇总 DGN-DDI 主结果 / 消融 / fold0 baseline 对照表。
 
 主表只把「同一 fold0 + 同一 neg_ent + 同一 AUPR 定义」标成可并排。
-未完成同协议重评前，SSI-DDI-like 的 AUPR/Acc/F1 标为不可比。
+未完成同协议重评前，baseline 的 AUPR/Acc/F1 标为不可比。
 """
 import json
 import os
@@ -13,9 +13,9 @@ OUT = os.path.join(ROOT, "test_results", "baseline_comparison.csv")
 OUT_MAIN = os.path.join(ROOT, "test_results", "baseline_comparison_main.csv")
 
 HOW_TO_CITE = (
-    "同一 DrugBank 86 类语料、本仓库 fold0 划分上复现 SSI-DDI-like"
-    "（softmax-gated add-pool，非官方 SAGPooling）；"
-    "不要写“与 SSI-DDI 论文完全同一 fold”。"
+    "同一 DrugBank 86 类语料、本仓库 fold0 划分；"
+    "val_noleak 选模、neg_ent=3 测试、AUPR=average_precision_score；"
+    "不要抄文献表格或声称官方同一 fold。"
 )
 AUPR_AP = "average_precision_score"
 AUPR_TRAP = "sklearn.auc(recall, precision) trapezoid"
@@ -65,12 +65,41 @@ def main():
     paper = _load_json(os.path.join(ROOT, "test_results", "paper_lock_full", "test_metrics.json"))
     paper_neg1 = _load_json(os.path.join(ROOT, "test_results", "paper_lock_neg1", "test_metrics.json"))
     ablate = os.path.join(ROOT, "test_results", "ablation_fullset")
-    ssi_neg3 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0", "test_metrics_neg3.json"))
-    ssi_orig = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0", "test_metrics.json"))
+    ecfp_neg3 = _load_json(os.path.join(ROOT, "test_results", "ecfp_mlp_fold0_noleak", "test_metrics_neg3.json"))
+    gat_neg3 = _load_json(os.path.join(ROOT, "test_results", "gat_ddi_fold0_noleak", "test_metrics_neg3.json"))
+    dsn_neg3 = _load_json(os.path.join(ROOT, "test_results", "dsn_ddi_fold0_noleak", "test_metrics_neg3.json"))
+    ssi_noleak_neg3 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0_noleak", "test_metrics_neg3.json"))
+    ssi_noleak_neg1 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0_noleak", "test_metrics.json"))
+    ssi_leaked_neg3 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0", "test_metrics_neg3.json"))
+    ssi_leaked_neg1 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0", "test_metrics.json"))
     sub_fair = _load_json(os.path.join(ablate, "ablation_substruct_only_fair", "test_metrics.json"))
     sub_old = _load_json(os.path.join(ablate, "ablation_substruct_only", "test_metrics.json"))
 
     rows = [
+        _row(
+            "ECFP4-MLP (noleak val, neg_ent=3)",
+            ecfp_neg3,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(ecfp_neg3),
+            note=(
+                "Morgan radius=2 2048-bit local baseline; not official DeepDDI; " + HOW_TO_CITE
+                if ecfp_neg3
+                else "pending: python baselines/ecfp_mlp/train_eval_fold0.py, then eval-only --neg-ent 3"
+            ),
+        ),
+        _row(
+            "GAT-DDI (atom-only RESCAL, noleak val, neg_ent=3)",
+            gat_neg3,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(gat_neg3),
+            note=(
+                "atom-only GAT encoder + RESCAL-style scorer; trained from scratch; " + HOW_TO_CITE
+                if gat_neg3
+                else "pending: python baselines/gat_ddi/train_eval_fold0.py, then eval-only --neg-ent 3"
+            ),
+        ),
         _row(
             "DGN-DDI (full, paper_lock)",
             paper,
@@ -108,27 +137,63 @@ def main():
             ),
         ),
         _row(
-            "SSI-DDI-like (softmax-gated add-pool, neg_ent=3)",
-            ssi_neg3,
+            "SSI-DDI-like (noleak val, neg_ent=3)",
+            ssi_noleak_neg3,
             neg_ent=3,
             aupr_definition=AUPR_AP,
-            comparable=bool(ssi_neg3),
+            comparable=bool(ssi_noleak_neg3),
             note=(
-                "same fold0 + same neg_ent=3 + average_precision_score; "
-                "not official SAGPooling; val∩test=3152 leaked into original checkpoint selection"
-                if ssi_neg3
-                else "pending re-eval of existing weights under DGN test protocol"
+                "softmax-gated add-pool; not official SAGPooling or official SSI-DDI fold; " + HOW_TO_CITE
+                if ssi_noleak_neg3
+                else "pending noleak re-eval; keep leaked SSI rows in appendix only"
             ),
         ),
         _row(
-            "SSI-DDI-like (original run, neg_ent=1, not comparable)",
-            ssi_orig,
-            neg_ent=1,
-            aupr_definition=ssi_orig.get("aupr_definition", AUPR_TRAP) if ssi_orig else AUPR_TRAP,
+            "DSN-DDI-like (noleak val, neg_ent=3)",
+            dsn_neg3,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(dsn_neg3),
+            note=(
+                "external DSN-DDI adapter; cite as -like if upstream code changed; " + HOW_TO_CITE
+                if dsn_neg3
+                else "pending: baselines/dsn_ddi/train_eval_fold0.py requires external upstream checkout"
+            ),
+        ),
+        _row(
+            "SSI-DDI-like (leaked val, neg_ent=3, appendix)",
+            ssi_leaked_neg3,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
             comparable=False,
             note=(
-                "do not put AUPR/Acc/F1 beside DGN main; different class ratio; "
-                "SAGPooling replaced; val∩test=3152 used for best checkpoint"
+                "appendix only; same test protocol but checkpoint selected on old val ∩ test = 3152"
+                if ssi_leaked_neg3
+                else "not ready"
+            ),
+        ),
+        _row(
+            "SSI-DDI-like (noleak val, neg_ent=1, not comparable)",
+            ssi_noleak_neg1,
+            neg_ent=1,
+            aupr_definition=ssi_noleak_neg1.get("aupr_definition", AUPR_AP) if ssi_noleak_neg1 else AUPR_AP,
+            comparable=False,
+            note=(
+                "appendix only; noleak checkpoint, 1 neg/pos — do not put AUPR/F1 beside DGN main"
+                if ssi_noleak_neg1
+                else "not ready"
+            ),
+        ),
+        _row(
+            "SSI-DDI-like (leaked val, neg_ent=1, not comparable)",
+            ssi_leaked_neg1,
+            neg_ent=1,
+            aupr_definition=ssi_leaked_neg1.get("aupr_definition", AUPR_TRAP) if ssi_leaked_neg1 else AUPR_TRAP,
+            comparable=False,
+            note=(
+                "appendix only; different class ratio; val∩test=3152 used for best checkpoint"
+                if ssi_leaked_neg1
+                else "not ready"
             ),
         ),
         _row(
