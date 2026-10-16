@@ -64,6 +64,10 @@ def _row(name, metrics, *, neg_ent, aupr_definition, comparable, note=""):
 def main():
     paper = _load_json(os.path.join(ROOT, "test_results", "paper_lock_full", "test_metrics.json"))
     paper_neg1 = _load_json(os.path.join(ROOT, "test_results", "paper_lock_neg1", "test_metrics.json"))
+    dgn_noleak = _load_json(os.path.join(ROOT, "test_results", "dgn_noleak_sigmoid_full", "test_metrics.json"))
+    dgn_fusion = _load_json(os.path.join(ROOT, "test_results", "dgn_ecfp_fusion", "test_metrics.json"))
+    dgn_hybrid = _load_json(os.path.join(ROOT, "test_results", "dgn_hybrid_head", "test_metrics.json"))
+    dgn_distill = _load_json(os.path.join(ROOT, "test_results", "dgn_distill_head", "test_metrics.json"))
     ablate = os.path.join(ROOT, "test_results", "ablation_fullset")
     ecfp_neg3 = _load_json(os.path.join(ROOT, "test_results", "ecfp_mlp_fold0_noleak", "test_metrics_neg3.json"))
     gat_neg3 = _load_json(os.path.join(ROOT, "test_results", "gat_ddi_fold0_noleak", "test_metrics_neg3.json"))
@@ -109,6 +113,18 @@ def main():
             note="fold0 test; main protocol; " + HOW_TO_CITE,
         ),
         _row(
+            "DGN-DDI (noleak val, improved protocol)",
+            dgn_noleak,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(dgn_noleak),
+            note=(
+                "noleak val + filtered global negatives + frozen eval negatives; " + HOW_TO_CITE
+                if dgn_noleak
+                else "pending: transductive_train.py --use-val-noleak --negative-sampling-scope global"
+            ),
+        ),
+        _row(
             "DGN-DDI w/o Inter",
             _load_json(os.path.join(ablate, "ablation_no_inter", "test_metrics.json")),
             neg_ent=3,
@@ -146,6 +162,42 @@ def main():
                 "softmax-gated add-pool; not official SAGPooling or official SSI-DDI fold; " + HOW_TO_CITE
                 if ssi_noleak_neg3
                 else "pending noleak re-eval; keep leaked SSI rows in appendix only"
+            ),
+        ),
+        _row(
+            "DGN + ECFP late fusion",
+            dgn_fusion,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(dgn_fusion),
+            note=(
+                "late fusion on val_noleak; preserves original paper_lock checkpoint"
+                if dgn_fusion
+                else "pending: python drugbank_test/dgn_ecfp_fusion.py"
+            ),
+        ),
+        _row(
+            "DGN hybrid head",
+            dgn_hybrid,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(dgn_hybrid),
+            note=(
+                "frozen DGN pair features + lightweight relation-aware head"
+                if dgn_hybrid
+                else "pending: python drugbank_test/train_dgn_hybrid_head.py --mode hybrid"
+            ),
+        ),
+        _row(
+            "DGN distill head",
+            dgn_distill,
+            neg_ent=3,
+            aupr_definition=AUPR_AP,
+            comparable=bool(dgn_distill),
+            note=(
+                "hybrid head with ECFP teacher distillation signal"
+                if dgn_distill
+                else "pending: python drugbank_test/train_dgn_hybrid_head.py --mode distill"
             ),
         ),
         _row(

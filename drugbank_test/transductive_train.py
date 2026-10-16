@@ -72,6 +72,9 @@ _TRAIN_CONFIG_SIGNATURE_KEYS = (
     "kge_dim",
     "heads_out_feat_params",
     "blocks_params",
+    "train_csv",
+    "val_csv",
+    "test_csv",
     "loss_fn",
     "focal_alpha",
     "focal_gamma",
@@ -86,6 +89,8 @@ _TRAIN_CONFIG_SIGNATURE_KEYS = (
     "hard_neg_selection_mode",
     "hard_neg_pool_strategy",
     "min_recall_for_threshold",
+    "negative_sampling_scope",
+    "freeze_eval_negatives",
 )
 
 
@@ -233,12 +238,15 @@ def get_default_config():
         'log_dir': os.path.join(_script_dir, "logs"),
         'resume_from_checkpoint': '',
         'allow_resume_config_mismatch': False,
+        'experiment_name': '',
 
         # 数据处理
         'neg_ent': 3,
         'subset_size': 5000,
         'train_ratio': 0.7,
         'val_ratio': 0.1,
+        'negative_sampling_scope': 'global',
+        'freeze_eval_negatives': True,
 
         'hidden_dim': 256,
         'kge_dim': 256,
@@ -584,11 +592,14 @@ class HardNegativeAwareDataset(DrugDataset):
     """支持硬负样本采样的数据集"""
 
     def __init__(self, csv_path, data_loader, neg_ent=1, disjoint_split=True, shuffle=True,
-                 return_pos_triples=False, hard_neg_ratio=0.7, csv_max_rows=None):
+                 return_pos_triples=False, hard_neg_ratio=0.7, csv_max_rows=None,
+                 negative_sampling_scope="local", freeze_negatives=False):
         super().__init__(
             csv_path, data_loader, neg_ent, disjoint_split, shuffle,
             return_pos_triples=return_pos_triples, hard_neg_ratio=hard_neg_ratio,
             csv_max_rows=csv_max_rows,
+            negative_sampling_scope=negative_sampling_scope,
+            freeze_negatives=freeze_negatives,
         )
         self.use_hard_negatives = False
         self.hard_negatives_cache = {}  # 缓存硬负样本
@@ -781,22 +792,30 @@ class DDITrainer:
 
         tr_meta = self.config.get("hard_neg_mode") == "online_batch"
         csv_cap = self.config.get("csv_max_rows")
+        neg_scope = str(self.config.get("negative_sampling_scope", "global") or "global").strip().lower()
+        freeze_eval = bool(self.config.get("freeze_eval_negatives", True))
         self.train_dataset = HardNegativeAwareDataset(
             self.config['train_csv'], self.ddi_loader,
             neg_ent=self.config['neg_ent'], shuffle=True,
             return_pos_triples=tr_meta,
             hard_neg_ratio=float(self.config.get("hard_neg_ratio", 0.7)),
             csv_max_rows=csv_cap,
+            negative_sampling_scope=neg_scope,
+            freeze_negatives=False,
         )
         self.val_dataset = DrugDataset(
             self.config['val_csv'], self.ddi_loader,
             neg_ent=self.config['neg_ent'], shuffle=False,
             csv_max_rows=csv_cap,
+            negative_sampling_scope=neg_scope,
+            freeze_negatives=freeze_eval,
         )
         self.test_dataset = DrugDataset(
             self.config['test_csv'], self.ddi_loader,
             neg_ent=self.config['neg_ent'], shuffle=False,
             csv_max_rows=csv_cap,
+            negative_sampling_scope=neg_scope,
+            freeze_negatives=freeze_eval,
         )
 
         # 数据子集处理
@@ -1543,12 +1562,15 @@ class DDITrainer:
 
         latest_path = os.path.join(out_dir, "latest_test_results.json")
         history_path = os.path.join(out_dir, "nightly_test_history.jsonl")
+        metrics_path = os.path.join(out_dir, "test_metrics.json")
         try:
             with open(latest_path, "w", encoding="utf-8") as f:
                 json.dump(record, f, ensure_ascii=False, indent=2)
+            with open(metrics_path, "w", encoding="utf-8") as f:
+                json.dump(test_results or {}, f, ensure_ascii=False, indent=2)
             with open(history_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            logger.info("Test results saved: %s | history append: %s", latest_path, history_path)
+            logger.info("Test results saved: %s | metrics: %s | history append: %s", latest_path, metrics_path, history_path)
             return latest_path
         except Exception as e:
             logger.warning("Failed to save test results: %s", e)
@@ -2183,6 +2205,22 @@ def main():
     parser.add_argument("--hard-neg-max-train-samples", type=int, default=0, help="覆盖硬负池最大样本数")
     parser.add_argument("--test-every-n-epochs", type=int, default=0, help="每隔多少个 epoch 自动测试一次")
     parser.add_argument("--allow-resume-config-mismatch", action="store_true", help="允许在训练配置签名不一致时强行续训")
+    parser.add_argument("--train-csv", type=str, default="", help="覆盖训练集 CSV 路径")
+    parser.add_argument("--val-csv", type=str, default="", help="覆盖验证集 CSV 路径")
+    parser.add_argument("--test-csv", type=str, default="", help="覆盖测试集 CSV 路径")
+    parser.add_argument("--use-val-noleak", action="store_true", help="验证集切换到 fold0/val_noleak.csv")
+    parser.add_argument("--save-dir", type=str, default="", help="覆盖 checkpoint 输出目录")
+    parser.add_argument("--log-dir", type=str, default="", help="覆盖日志输出目录")
+    parser.add_argument("--test-results-dir", type=str, default="", help="覆盖测试结果输出目录")
+    parser.add_argument("--experiment-name", type=str, default="", help="为 save/log/test_results 创建独立实验子目录")
+    parser.add_argument(
+        "--negative-sampling-scope",
+        choices=["local", "global"],
+        default="",
+        help="负采样过滤口径：local=当前 split 正例，global=ddis.csv 全体正例",
+    )
+    parser.add_argument("--freeze-eval-negatives", action="store_true", help="验证/测试预生成并固定负样本")
+    parser.add_argument("--no-freeze-eval-negatives", action="store_true", help="验证/测试每次动态采负样本")
     args = parser.parse_args()
 
     config = get_default_config()
@@ -2238,6 +2276,36 @@ def main():
         config["test_every_n_epochs"] = int(args.test_every_n_epochs)
     if args.allow_resume_config_mismatch:
         config["allow_resume_config_mismatch"] = True
+    if args.train_csv:
+        config["train_csv"] = args.train_csv
+    if args.val_csv:
+        config["val_csv"] = args.val_csv
+    if args.test_csv:
+        config["test_csv"] = args.test_csv
+    if args.use_val_noleak:
+        fold0_dir = os.path.dirname(config["val_csv"])
+        config["val_csv"] = os.path.join(fold0_dir, "val_noleak.csv")
+    if args.negative_sampling_scope:
+        config["negative_sampling_scope"] = args.negative_sampling_scope
+    if args.freeze_eval_negatives:
+        config["freeze_eval_negatives"] = True
+    if args.no_freeze_eval_negatives:
+        config["freeze_eval_negatives"] = False
+    if args.save_dir:
+        config["save_dir"] = args.save_dir
+    if args.log_dir:
+        config["log_dir"] = args.log_dir
+    if args.test_results_dir:
+        config["test_results_dir"] = args.test_results_dir
+    if args.experiment_name:
+        base_script_dir = os.path.dirname(os.path.abspath(__file__))
+        config["experiment_name"] = args.experiment_name
+        if not args.save_dir:
+            config["save_dir"] = os.path.join(base_script_dir, "checkpoints", args.experiment_name)
+        if not args.log_dir:
+            config["log_dir"] = os.path.join(base_script_dir, "logs", args.experiment_name)
+        if not args.test_results_dir:
+            config["test_results_dir"] = os.path.join(base_script_dir, "test_results", args.experiment_name)
 
     if args.stop_at:
         _parse_hhmm(args.stop_at)
@@ -2248,18 +2316,23 @@ def main():
         config["test_after_each_round"] = False
 
     logger.info(
-        "profile=%s | subset_size=%s | epochs=%s | patience=%s | compile_model=%s | stop_at=%s",
+        "profile=%s | subset_size=%s | epochs=%s | patience=%s | compile_model=%s | stop_at=%s | val_csv=%s | neg_scope=%s | freeze_eval_neg=%s",
         args.profile,
         config.get("subset_size"),
         config["epochs"],
         config["patience"],
         config.get("compile_model", False),
         config.get("stop_at") or "(none)",
+        config.get("val_csv"),
+        config.get("negative_sampling_scope"),
+        config.get("freeze_eval_negatives"),
     )
 
     # 创建保存目录
     os.makedirs(config['save_dir'], exist_ok=True)
     os.makedirs(config['log_dir'], exist_ok=True)
+    if config.get("test_results_dir"):
+        os.makedirs(config["test_results_dir"], exist_ok=True)
 
     # 设置随机种子
     torch.manual_seed(config['random_seed'])

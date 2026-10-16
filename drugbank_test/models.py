@@ -636,44 +636,37 @@ class DGN_DDI(nn.Module):
             return repr_h_all, repr_t_all, weight_h_list_all, weight_t_list_all
         return repr_h_all, repr_t_all, None, None
 
+    def encode_pair_representations(self, h_data, t_data, rels, b_graph):
+        """返回 pair 级聚合表示，供融合/蒸馏等外部头复用。"""
+        self._encode_step_cache.clear()
+        if isinstance(b_graph, dict):
+            h_substruct = b_graph.get('h_substruct', None)
+            t_substruct = b_graph.get('t_substruct', None)
+            h_data_list = self._encode_drug_from_batch(h_data, h_substruct)
+            t_data_list = self._encode_drug_from_batch(t_data, t_substruct)
+            b_graph_processed = {
+                key: value for key, value in b_graph.items()
+                if key not in ['h_substruct', 't_substruct'] and value is not None
+            }
+        else:
+            h_data_list = self._encode_drug_from_batch(h_data)
+            t_data_list = self._encode_drug_from_batch(t_data)
+            b_graph_processed = {'fused': b_graph} if b_graph is not None else {}
+
+        repr_h, repr_t, _, _ = self._process_blocks(
+            h_data_list, t_data_list, b_graph_processed, return_weights=False
+        )
+        repr_h_attended = self.co_attention(repr_h, repr_t)
+        repr_t_attended = self.co_attention(repr_t, repr_h)
+        block_w = torch.softmax(self.block_weights, dim=0).view(1, -1, 1)
+        repr_h_agg = (repr_h_attended * block_w).sum(dim=1)
+        repr_t_agg = (repr_t_attended * block_w).sum(dim=1)
+        return repr_h_agg, repr_t_agg
+
     def forward(self, h_data, t_data, rels, b_graph):
         """前向传播，适配data_preprocessing.py的数据格式"""
-        self._encode_step_cache.clear()
         try:
-            # 处理输入数据格式
-            if isinstance(b_graph, dict):
-                # 从字典中提取子结构数据
-                h_substruct = b_graph.get('h_substruct', None)
-                t_substruct = b_graph.get('t_substruct', None)
-
-                # 编码药物数据
-                h_data_list = self._encode_drug_from_batch(h_data, h_substruct)
-                t_data_list = self._encode_drug_from_batch(t_data, t_substruct)
-
-                # 处理二部图
-                b_graph_processed = {
-                    key: value for key, value in b_graph.items()
-                    if key not in ['h_substruct', 't_substruct'] and value is not None
-                }
-            else:
-                # 兼容旧格式
-                h_data_list = self._encode_drug_from_batch(h_data)
-                t_data_list = self._encode_drug_from_batch(t_data)
-                b_graph_processed = {'fused': b_graph} if b_graph is not None else {}
-
-            # 通过DGN-DDI块处理
-            repr_h, repr_t, weight_h_list_all, weight_t_list_all = self._process_blocks(
-                h_data_list, t_data_list, b_graph_processed, return_weights=True
-            )
-
-            # 双向协同注意力：同时更新 head/tail，减少单向信息偏置。
-            repr_h_attended = self.co_attention(repr_h, repr_t)
-            repr_t_attended = self.co_attention(repr_t, repr_h)
-
-            # 可学习 block 权重加权聚合（深层 block 可获得更高权重）。
-            block_w = torch.softmax(self.block_weights, dim=0).view(1, -1, 1)
-            repr_h_agg = (repr_h_attended * block_w).sum(dim=1)
-            repr_t_agg = (repr_t_attended * block_w).sum(dim=1)
+            repr_h_agg, repr_t_agg = self.encode_pair_representations(h_data, t_data, rels, b_graph)
 
             # 知识图嵌入计算得分
             try:
@@ -698,6 +691,16 @@ class DGN_DDI(nn.Module):
             logger.error(f"rels shape: {rels.shape if rels is not None else 'None'}")
             logger.error(f"b_graph type: {type(b_graph)}")
             raise e
+
+    def forward_with_pair_features(self, h_data, t_data, rels, b_graph):
+        """同时返回 DGN 分数与 pair 聚合表示，供外部混合头使用。"""
+        repr_h_agg, repr_t_agg = self.encode_pair_representations(h_data, t_data, rels, b_graph)
+        raw_scores = self.KGE(repr_h_agg, repr_t_agg, rels)
+        if not self.score_higher_is_better:
+            raw_scores = -raw_scores
+        scale = self.logit_scale.abs() + 1e-6
+        scores = torch.nan_to_num(raw_scores / scale, nan=0.0, posinf=50.0, neginf=-50.0).clamp(-50.0, 50.0)
+        return scores, repr_h_agg, repr_t_agg
 
     @staticmethod
     def _avg_tensors(tensors: List[Optional[torch.Tensor]]) -> Optional[torch.Tensor]:

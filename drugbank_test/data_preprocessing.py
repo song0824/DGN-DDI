@@ -333,7 +333,7 @@ class DDIDataLoader:
             bool(CONFIG.get("WRITE_BIPARTITE_DISK_CACHE", False)),
             int(CONFIG.get("BIPARTITE_MEM_CACHE_MAX", 8192)),
         )
-        self.all_pos_tup = []  # 从外部CSV加载，这里初始化空列表
+        self.all_pos_tup = self._load_all_positive_ddis()
         if CONFIG.get("PARSE_MOL_STRUCTURES_ON_INIT", False):
             self.drug_to_mol_graph = self._parse_mol_structures()
         else:
@@ -419,6 +419,23 @@ class DDIDataLoader:
             logger.error(f"Failed to load SMILES data: {str(e)}")
             raise
 
+    def _load_all_positive_ddis(self):
+        """从全量 ddis.csv 读取正样本，供 filtered negative sampling 使用。"""
+        ddi_path = CONFIG["DDI_CSV_PATH"]
+        logger.info("Loading all positive DDIs from %s ...", ddi_path)
+        try:
+            df = pd.read_csv(ddi_path, usecols=["d1", "d2", "type"])
+            triples = []
+            for h, t, r in zip(df["d1"], df["d2"], df["type"]):
+                r = _normalize_relation_type(r)
+                if h in self.drug_graph_dict and t in self.drug_graph_dict:
+                    triples.append((h, t, r))
+            logger.info("Loaded %d global positive DDIs for filtered negatives", len(triples))
+            return triples
+        except Exception as e:
+            logger.error("Failed to load all positive DDIs from %s: %s", ddi_path, e)
+            raise
+
     def _load_and_filter_ddis_from_csv(self, csv_path, max_rows=None):
         """从指定CSV文件加载并过滤有效的药物-药物相互作用数据"""
         logger.info(f"Loading DDI interaction data from {csv_path}...")
@@ -501,15 +518,22 @@ class DrugDataset(Dataset):
     """药物相互作用预测数据集，支持双粒度特征和二部图构建"""
 
     def __init__(self, csv_path, data_loader, neg_ent=1, disjoint_split=True, shuffle=True, return_pos_triples=False,
-                 hard_neg_ratio=0.7, csv_max_rows=None):
+                 hard_neg_ratio=0.7, csv_max_rows=None, negative_sampling_scope="local", freeze_negatives=False):
         self.data_loader = data_loader
         self.neg_ent = neg_ent  # 每个正样本生成的负样本数
         self.return_pos_triples = return_pos_triples
         self.hard_neg_ratio = hard_neg_ratio
+        self.negative_sampling_scope = str(negative_sampling_scope or "local").strip().lower()
+        if self.negative_sampling_scope not in {"local", "global"}:
+            raise ValueError(
+                f"Unknown negative_sampling_scope={negative_sampling_scope!r}, expected 'local' or 'global'"
+            )
+        self.freeze_negatives = bool(freeze_negatives)
         self.tri_list = self.data_loader._load_and_filter_ddis_from_csv(csv_path, max_rows=csv_max_rows)
         self._drug_data_cache = {}
         # 关系统计按数据集维持，避免 train/val/test 互相覆盖导致采样偏移。
         self._build_local_relation_structures(self.tri_list)
+        self._refresh_negative_sampling_views()
 
         # 确定数据集包含的药物ID
         if disjoint_split and self.tri_list:
@@ -525,8 +549,21 @@ class DrugDataset(Dataset):
         if shuffle and self.tri_list:
             random.shuffle(self.tri_list)
 
+        self._frozen_negative_cache = {}
+        if self.freeze_negatives and self.neg_ent > 0:
+            self._frozen_negative_cache = {
+                (h, t, r): self._generate_neg_samples(h, t, r)
+                for h, t, r in self.tri_list
+            }
+            logger.info(
+                "Precomputed frozen negatives for %d triples (scope=%s)",
+                len(self._frozen_negative_cache),
+                self.negative_sampling_scope,
+            )
+
         logger.info(f"Dataset initialized with {len(self.tri_list)} samples "
-                    f"({len(self.drug_ids)} unique drugs)")
+                    f"({len(self.drug_ids)} unique drugs, neg_scope={self.negative_sampling_scope}, "
+                    f"freeze_negatives={self.freeze_negatives})")
 
     def __len__(self):
         return len(self.tri_list)
@@ -563,6 +600,32 @@ class DrugDataset(Dataset):
             num_heads = len(self.ALL_H_WITH_R.get(r, []))
             self.ALL_HEAD_PER_TAIL[r] = self.FREQ_REL[r] / num_tails if num_tails > 0 else 0
             self.ALL_TAIL_PER_HEAD[r] = self.FREQ_REL[r] / num_heads if num_heads > 0 else 0
+
+    def _refresh_negative_sampling_views(self):
+        """根据作用域选择负采样使用的统计。"""
+        scope = getattr(self, "negative_sampling_scope", "local")
+        src = self.data_loader if scope == "global" else self
+        self._sample_true_h_with_tr = src.ALL_TRUE_H_WITH_TR
+        self._sample_true_t_with_hr = src.ALL_TRUE_T_WITH_HR
+        self._sample_all_head_per_tail = src.ALL_HEAD_PER_TAIL
+        self._sample_all_tail_per_head = src.ALL_TAIL_PER_HEAD
+
+    def _ensure_negative_sampling_views(self):
+        """兼容旧对象/恢复路径，确保负采样所需视图存在。"""
+        if not hasattr(self, "negative_sampling_scope"):
+            self.negative_sampling_scope = "local"
+        if not hasattr(self, "freeze_negatives"):
+            self.freeze_negatives = False
+        if not hasattr(self, "_frozen_negative_cache") or self._frozen_negative_cache is None:
+            self._frozen_negative_cache = {}
+        required = (
+            "_sample_true_h_with_tr",
+            "_sample_true_t_with_hr",
+            "_sample_all_head_per_tail",
+            "_sample_all_tail_per_head",
+        )
+        if not all(hasattr(self, name) for name in required):
+            self._refresh_negative_sampling_views()
 
     def _get_drug_data(self, drug_id):
         """安全获取药物的双粒度特征数据并验证完整性（带实例级缓存）。"""
@@ -783,6 +846,8 @@ class DrugDataset(Dataset):
 
     def _corrupt_ent(self, other_ent, rel, ent_dict, n=1):
         """生成负样本实体（替换头/尾实体）"""
+        if n <= 0:
+            return np.array([], dtype=object)
         positive_set = set(ent_dict.get((other_ent, rel), []))
         candidates = [d for d in self.drug_ids if d not in positive_set]
 
@@ -794,20 +859,23 @@ class DrugDataset(Dataset):
 
     def _corrupt_head(self, tail, rel, n=1):
         """生成头实体负样本"""
-        return self._corrupt_ent(tail, rel, self.ALL_TRUE_H_WITH_TR, n)
+        self._ensure_negative_sampling_views()
+        return self._corrupt_ent(tail, rel, self._sample_true_h_with_tr, n)
 
     def _corrupt_tail(self, head, rel, n=1):
         """生成尾实体负样本"""
-        return self._corrupt_ent(head, rel, self.ALL_TRUE_T_WITH_HR, n)
+        self._ensure_negative_sampling_views()
+        return self._corrupt_ent(head, rel, self._sample_true_t_with_hr, n)
 
     def _generate_neg_samples(self, h, t, r):
         """根据关系统计生成负样本"""
-        if r not in self.ALL_TAIL_PER_HEAD or r not in self.ALL_HEAD_PER_TAIL:
+        self._ensure_negative_sampling_views()
+        if r not in self._sample_all_tail_per_head or r not in self._sample_all_head_per_tail:
             neg_head_count = self.neg_ent // 2
             neg_tail_count = self.neg_ent - neg_head_count
         else:
-            prob = self.ALL_TAIL_PER_HEAD[r] / (
-                    self.ALL_TAIL_PER_HEAD[r] + self.ALL_HEAD_PER_TAIL[r]
+            prob = self._sample_all_tail_per_head[r] / (
+                    self._sample_all_tail_per_head[r] + self._sample_all_head_per_tail[r]
             )
             neg_head_count = sum(random.random() < prob for _ in range(self.neg_ent))
             neg_tail_count = self.neg_ent - neg_head_count
@@ -822,6 +890,11 @@ class DrugDataset(Dataset):
 
     def collate_fn(self, batch):
         """批处理函数，构建正负样本批次并确保双粒度二部图一致性"""
+        self._ensure_negative_sampling_views()
+        # 兼容已经启动/恢复的旧 Dataset 对象：缺少该属性时退回动态负采样。
+        frozen_cache = getattr(self, "_frozen_negative_cache", {})
+        if frozen_cache is None:
+            frozen_cache = {}
         # 过滤掉无法获取有效数据的样本
         valid_triples = []
         for h, t, r in batch:
@@ -865,7 +938,11 @@ class DrugDataset(Dataset):
                     pos_meta.append((h, t, r))
 
                 # 负样本
-                neg_heads, neg_tails = self._neg_sample_heads_tails(h, t, r)
+                frozen = frozen_cache.get((h, t, r)) if frozen_cache else None
+                if frozen is not None:
+                    neg_heads, neg_tails = frozen
+                else:
+                    neg_heads, neg_tails = self._neg_sample_heads_tails(h, t, r)
 
                 for neg_h in neg_heads:
                     neg_h_data_dict = self._get_drug_data(neg_h)

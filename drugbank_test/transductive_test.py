@@ -41,6 +41,8 @@ def get_test_config(profile: str = "full"):
         # 数据处理
         'neg_ent': 3,
         'subset_size': None,
+        'negative_sampling_scope': 'global',
+        'freeze_eval_negatives': True,
 
         # 模型超参数（需要与训练时保持一致）
         'hidden_dim': 256,
@@ -106,6 +108,8 @@ def _merge_eval_config_from_checkpoint(config: dict, checkpoint: dict) -> dict:
         "sigmoid_label_smoothing",
         "hinge_margin",
         "min_recall_for_threshold",
+        "negative_sampling_scope",
+        "freeze_eval_negatives",
     ]
     for key in synced_keys:
         if key in train_cfg:
@@ -199,7 +203,9 @@ class DDITester:
             self.config['test_csv'],
             self.ddi_loader,
             neg_ent=self.config['neg_ent'],
-            shuffle=False
+            shuffle=False,
+            negative_sampling_scope=self.config.get("negative_sampling_scope", "global"),
+            freeze_negatives=bool(self.config.get("freeze_eval_negatives", True)),
         )
 
         # 如果指定了子集大小，则使用子集
@@ -682,6 +688,13 @@ def main():
         help='Override negatives per positive after checkpoint merge (e.g. 1 for appendix)',
     )
     parser.add_argument(
+        '--negative-sampling-scope',
+        choices=['local', 'global'],
+        help='Override filtered negative scope for evaluation',
+    )
+    parser.add_argument('--freeze-eval-negatives', action='store_true', help='Pre-generate deterministic negatives')
+    parser.add_argument('--no-freeze-eval-negatives', action='store_true', help='Sample negatives on the fly')
+    parser.add_argument(
         '--ablation',
         choices=['full', 'no_fusion', 'no_inter', 'atom_only', 'substruct_only'],
         default='full',
@@ -717,6 +730,12 @@ def main():
     if args.neg_ent is not None:
         config['neg_ent'] = int(args.neg_ent)
         config['_neg_ent_overridden'] = int(args.neg_ent)
+    if args.negative_sampling_scope:
+        config['negative_sampling_scope'] = args.negative_sampling_scope
+    if args.freeze_eval_negatives:
+        config['freeze_eval_negatives'] = True
+    if args.no_freeze_eval_negatives:
+        config['freeze_eval_negatives'] = False
     config['ablation_mode'] = args.ablation
 
     # 创建结果保存目录
