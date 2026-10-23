@@ -262,22 +262,104 @@ class DDITester:
         if ablation and ablation != "full":
             self.model.set_ablation_mode(ablation)
 
+    def _partial_path(self):
+        results_dir = self.config.get("results_dir")
+        if not results_dir:
+            return None
+        return os.path.join(results_dir, "partial_scores.npz")
+
+    def _save_partial(self, next_batch, total_loss, scores, labels, rels, batch_times, elapsed):
+        path = self._partial_path()
+        if not path or not self.config.get("save_partial", True):
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp.npz"
+        # 传入文件对象，避免 savez 对非 .npz 文件名再追加扩展名。
+        with open(tmp, "wb") as handle:
+            np.savez(
+                handle,
+                next_batch=np.int64(next_batch),
+                total_loss=np.float64(total_loss),
+                scores=np.asarray(scores, dtype=np.float32),
+                labels=np.asarray(labels, dtype=np.int8),
+                rels=np.asarray(rels, dtype=np.int64),
+                batch_times=np.asarray(batch_times, dtype=np.float64),
+                elapsed=np.float64(elapsed),
+                n_loader=np.int64(len(self.test_loader)),
+                threshold=np.float64(self.config.get("threshold", 0.5)),
+            )
+        try:
+            os.replace(tmp, path)
+        except PermissionError:
+            if os.path.exists(path):
+                os.remove(path)
+            os.replace(tmp, path)
+
+    def _load_partial(self):
+        path = self._partial_path()
+        if not path or not self.config.get("resume_partial", True) or not os.path.exists(path):
+            return None
+        # 读入后立即关闭，避免 Windows 上替换 partial_scores.npz 被占用。
+        with np.load(path) as data:
+            n_loader = int(data["n_loader"])
+            threshold = float(data["threshold"])
+            if n_loader != len(self.test_loader):
+                logger.warning(
+                    "partial_scores.npz 批次数 %s != 当前 %s，忽略断点",
+                    n_loader, len(self.test_loader),
+                )
+                return None
+            if abs(threshold - float(self.config.get("threshold", 0.5))) > 1e-6:
+                logger.warning("partial_scores.npz 阈值与当前不一致，忽略断点")
+                return None
+            return {
+                "next_batch": int(data["next_batch"]),
+                "total_loss": float(data["total_loss"]),
+                "scores": np.array(data["scores"], copy=True),
+                "labels": np.array(data["labels"], copy=True),
+                "rels": np.array(data["rels"], copy=True),
+                "batch_times": np.array(data["batch_times"], copy=True),
+                "elapsed": float(data["elapsed"]),
+            }
+
     def test(self):
-        """主测试函数，优化推理效率"""
+        """主测试函数，优化推理效率。
+
+        results_dir 下的 partial_scores.npz 每 20 个有效 batch 原子替换一次。
+        中断后用同一配置重跑，会从 next_batch 继续，而不是从头推理。
+        """
         logger.info("Starting model testing...")
-        start_time = time.time()
+        wall_start = time.time()
 
         self.model.eval()
-        total_loss = 0
-        all_scores, all_labels, all_rels = [], [], []
+        total_loss = 0.0
+        score_parts, label_parts, rel_parts = [], [], []
         batch_times = []
+        start_batch = 0
+        prior_elapsed = 0.0
+
+        partial = self._load_partial()
+        if partial is not None:
+            start_batch = int(partial["next_batch"])
+            total_loss = float(partial["total_loss"])
+            if partial["scores"].size:
+                score_parts.append(partial["scores"])
+                label_parts.append(partial["labels"])
+                rel_parts.append(partial["rels"])
+            batch_times = partial["batch_times"].tolist()
+            prior_elapsed = float(partial["elapsed"])
+            logger.info(
+                "Resuming test from batch %d/%d (%d scores already saved)",
+                start_batch, len(self.test_loader), int(partial["scores"].size),
+            )
 
         # 自动调整进度条显示
         progress_bar = tqdm(
             self.test_loader,
             desc="Testing",
             leave=True,
-            total=len(self.test_loader)
+            total=len(self.test_loader),
+            initial=start_batch,
         )
 
         # 启用CUDA推理优化（如果可用）
@@ -285,7 +367,13 @@ class DDITester:
             if self.device.type == 'cuda':
                 torch.backends.cudnn.benchmark = True
 
+            skipped_resume = 0
             for batch_idx, batch in enumerate(progress_bar):
+                if batch_idx < start_batch:
+                    skipped_resume += 1
+                    if skipped_resume % 200 == 0:
+                        logger.info("Skipping already scored batches: %d/%d", skipped_resume, start_batch)
+                    continue
                 batch_start_time = time.time()
 
                 if len(batch) == 3:
@@ -329,15 +417,15 @@ class DDITester:
                     loss, _, _ = self.loss_fn(p_scores, n_scores)
                     total_loss += loss.item()
 
-                    all_scores.append(p_scores.cpu())
-                    all_labels.append(torch.ones_like(p_scores.cpu()))
-                    all_rels.append(pos_r.detach().cpu())
+                    score_parts.append(p_scores.detach().float().cpu().numpy())
+                    label_parts.append(np.ones(p_scores.size(0), dtype=np.int8))
+                    rel_parts.append(pos_r.detach().cpu().numpy())
 
                     if n_scores.numel() > 0:
-                        all_scores.append(n_scores.cpu())
-                        all_labels.append(torch.zeros_like(n_scores.cpu()))
+                        score_parts.append(n_scores.detach().float().cpu().numpy())
+                        label_parts.append(np.zeros(n_scores.size(0), dtype=np.int8))
                         if neg_r is not None:
-                            all_rels.append(neg_r.detach().cpu())
+                            rel_parts.append(neg_r.detach().cpu().numpy())
 
                 except Exception as e:
                     logger.warning(f"Error processing batch {batch_idx}: {e}")
@@ -350,20 +438,35 @@ class DDITester:
                     'Loss': f"{loss.item():.4f}",
                     'Avg_Time': f"{np.mean(batch_times):.3f}s"
                 })
+                done_batches = batch_idx + 1
+                if done_batches % 20 == 0:
+                    self._save_partial(
+                        done_batches,
+                        total_loss,
+                        np.concatenate(score_parts) if score_parts else np.array([], dtype=np.float32),
+                        np.concatenate(label_parts) if label_parts else np.array([], dtype=np.int8),
+                        np.concatenate(rel_parts) if rel_parts else np.array([], dtype=np.int64),
+                        batch_times,
+                        prior_elapsed + (time.time() - wall_start),
+                    )
 
             # 关闭CUDA优化
             if self.device.type == 'cuda':
                 torch.backends.cudnn.benchmark = False
 
         # 计算整体指标
-        avg_loss = total_loss / len(self.test_loader) if len(self.test_loader) > 0 else 0
-        all_scores = torch.cat(all_scores) if all_scores else torch.tensor([])
-        all_labels = torch.cat(all_labels) if all_labels else torch.tensor([])
+        n_batches = len(self.test_loader)
+        avg_loss = total_loss / n_batches if n_batches > 0 else 0
+        scores_np = np.concatenate(score_parts) if score_parts else np.array([], dtype=np.float32)
+        labels_np = np.concatenate(label_parts) if label_parts else np.array([], dtype=np.int8)
+        all_scores = torch.from_numpy(scores_np) if scores_np.size else torch.tensor([])
+        all_labels = torch.from_numpy(labels_np) if labels_np.size else torch.tensor([])
 
         # 存储结果（all_scores 为 logit/原始分；阈值比较统一使用概率）
         self.scores = all_scores.numpy()
         self.ground_truths = all_labels.numpy()
-        self.relation_ids = torch.cat(all_rels).numpy() if all_rels else np.full(len(self.scores), -1)
+        rels_np = np.concatenate(rel_parts) if rel_parts else np.full(len(self.scores), -1)
+        self.relation_ids = rels_np
         if len(self.relation_ids) != len(self.scores):
             logger.warning(
                 "Relation id length %d != score length %d; per-relation table may be incomplete",
@@ -378,7 +481,10 @@ class DDITester:
         test_metrics['avg_loss'] = avg_loss
         test_metrics['avg_batch_time'] = np.mean(batch_times) if batch_times else 0
         test_metrics['total_samples'] = len(all_labels)
-        test_metrics['total_inference_time'] = time.time() - start_time
+        test_metrics['total_inference_time'] = prior_elapsed + (time.time() - wall_start)
+        partial_path = self._partial_path()
+        if partial_path and os.path.exists(partial_path):
+            os.remove(partial_path)
         test_metrics['neg_ent'] = int(self.config.get('neg_ent', 3))
         test_metrics['aupr_definition'] = 'average_precision_score'
         test_metrics['ablation_mode'] = str(self.config.get('ablation_mode') or 'full')
