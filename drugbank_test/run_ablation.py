@@ -1,7 +1,7 @@
 """推理消融：默认 full / no_fusion / substruct_only。
 
 不改权重、不重训。默认权重为无泄漏正式 checkpoint，
-结果写入 test_results/ablation_noleak_<mode>/，不覆盖 paper_lock 的 ablation_*。
+结果写入 test_results/ablation_noleak_<mode>/。
 atom_only 与 no_fusion 同一路径，默认只跑 no_fusion。
 """
 import argparse

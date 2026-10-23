@@ -62,13 +62,11 @@ def _row(name, metrics, *, neg_ent, aupr_definition, comparable, note=""):
 
 
 def main():
-    paper = _load_json(os.path.join(ROOT, "test_results", "paper_lock_full", "test_metrics.json"))
-    paper_neg1 = _load_json(os.path.join(ROOT, "test_results", "paper_lock_neg1", "test_metrics.json"))
     dgn_noleak = _load_json(os.path.join(ROOT, "test_results", "dgn_noleak_sigmoid_full", "test_metrics.json"))
     dgn_fusion = _load_json(os.path.join(ROOT, "test_results", "dgn_ecfp_fusion", "test_metrics.json"))
     dgn_hybrid = _load_json(os.path.join(ROOT, "test_results", "dgn_hybrid_head", "test_metrics.json"))
     dgn_distill = _load_json(os.path.join(ROOT, "test_results", "dgn_distill_head", "test_metrics.json"))
-    ablate = os.path.join(ROOT, "test_results", "ablation_fullset")
+    ablate = os.path.join(ROOT, "test_results")
     ecfp_neg3 = _load_json(os.path.join(ROOT, "test_results", "ecfp_mlp_fold0_noleak", "test_metrics_neg3.json"))
     gat_neg3 = _load_json(os.path.join(ROOT, "test_results", "gat_ddi_fold0_noleak", "test_metrics_neg3.json"))
     dsn_neg3 = _load_json(os.path.join(ROOT, "test_results", "dsn_ddi_fold0_noleak", "test_metrics_neg3.json"))
@@ -76,8 +74,8 @@ def main():
     ssi_noleak_neg1 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0_noleak", "test_metrics.json"))
     ssi_leaked_neg3 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0", "test_metrics_neg3.json"))
     ssi_leaked_neg1 = _load_json(os.path.join(ROOT, "test_results", "ssi_ddi_fold0", "test_metrics.json"))
-    sub_fair = _load_json(os.path.join(ablate, "ablation_substruct_only_fair", "test_metrics.json"))
-    sub_old = _load_json(os.path.join(ablate, "ablation_substruct_only", "test_metrics.json"))
+    no_fusion = _load_json(os.path.join(ablate, "ablation_noleak_no_fusion", "test_metrics.json"))
+    substruct_only = _load_json(os.path.join(ablate, "ablation_noleak_substruct_only", "test_metrics.json"))
 
     rows = [
         _row(
@@ -105,14 +103,6 @@ def main():
             ),
         ),
         _row(
-            "DGN-DDI (full, paper_lock)",
-            paper,
-            neg_ent=3,
-            aupr_definition=AUPR_AP,
-            comparable=True,
-            note="fold0 test; main protocol; " + HOW_TO_CITE,
-        ),
-        _row(
             "DGN-DDI (noleak val, improved protocol)",
             dgn_noleak,
             neg_ent=3,
@@ -125,32 +115,20 @@ def main():
             ),
         ),
         _row(
-            "DGN-DDI w/o Inter",
-            _load_json(os.path.join(ablate, "ablation_no_inter", "test_metrics.json")),
-            neg_ent=3,
-            aupr_definition=AUPR_AP,
-            comparable=True,
-            note="inference ablation; same protocol as DGN main",
-        ),
-        _row(
             "DGN-DDI w/o Fusion (= atom_only)",
-            _load_json(os.path.join(ablate, "ablation_no_fusion", "test_metrics.json")),
+            no_fusion,
             neg_ent=3,
             aupr_definition=AUPR_AP,
-            comparable=True,
-            note="inference ablation; atom_only 与 no_fusion 同一张量路径，只报一行",
+            comparable=bool(no_fusion),
+            note="inference ablation on noleak checkpoint; atom_only 与 no_fusion 同一张量路径，只报一行",
         ),
         _row(
             "DGN-DDI substruct_only (fair residual)",
-            sub_fair,
+            substruct_only,
             neg_ent=3,
             aupr_definition=AUPR_AP,
-            comparable=bool(sub_fair),
-            note=(
-                "inference ablation; keeps atom residual, fusion increment from substructure only"
-                if sub_fair
-                else "not ready — do not cite residual-free 0.56 AUC"
-            ),
+            comparable=bool(substruct_only),
+            note="inference ablation on noleak checkpoint; keeps atom residual, fusion increment from substructure only",
         ),
         _row(
             "SSI-DDI-like (noleak val, neg_ent=3)",
@@ -171,7 +149,7 @@ def main():
             aupr_definition=AUPR_AP,
             comparable=bool(dgn_fusion),
             note=(
-                "late fusion on val_noleak; preserves original paper_lock checkpoint"
+                "late fusion on val_noleak"
                 if dgn_fusion
                 else "pending: python drugbank_test/dgn_ecfp_fusion.py"
             ),
@@ -248,26 +226,7 @@ def main():
                 else "not ready"
             ),
         ),
-        _row(
-            "DGN-DDI (appendix, neg_ent=1)",
-            paper_neg1,
-            neg_ent=1,
-            aupr_definition=AUPR_AP,
-            comparable=False,
-            note="appendix only; same weights as paper_lock, 1 neg/pos to mirror SSI-DDI-like original run",
-        ),
     ]
-    if sub_old and not sub_fair:
-        rows.append(
-            _row(
-                "DGN-DDI substruct_only (UNFAIR, residual dropped — do not cite)",
-                sub_old,
-                neg_ent=3,
-                aupr_definition=AUPR_AP,
-                comparable=False,
-                note="legacy path dropped atom residual; 0.56 AUC is an implementation artifact",
-            )
-        )
 
     df = pd.DataFrame(rows)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
